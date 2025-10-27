@@ -5,7 +5,8 @@ Configuration Management
 
 import os
 from typing import List, Optional, Union
-from pydantic import BaseSettings, validator
+from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic import field_validator
 from functools import lru_cache
 
 
@@ -29,8 +30,8 @@ class Settings(BaseSettings):
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
 
-    # Database (if needed)
-    DATABASE_URL: Optional[str] = None
+    # Database
+    DATABASE_URL: str = "sqlite+aiosqlite:///./data/inspirations.db"
 
     # Redis (for caching and rate limiting)
     REDIS_URL: str = "redis://localhost:6379"
@@ -69,35 +70,33 @@ class Settings(BaseSettings):
     METRICS_ENABLED: bool = True
     SENTRY_DSN: Optional[str] = None
 
-    @validator("ENVIRONMENT")
-    def validate_environment(cls, v):
+    @field_validator("ENVIRONMENT")
+    @classmethod
+    def validate_environment(cls, v: str) -> str:
         allowed = ["development", "staging", "production"]
         if v not in allowed:
             raise ValueError(f"ENVIRONMENT must be one of {allowed}")
         return v
 
-    @validator("DEBUG", pre=True, always=True)
-    def set_debug_from_env(cls, v, values):
-        if values.get("ENVIRONMENT") == "production":
-            return False
-        return v
-
-    @validator("ALLOWED_ORIGINS", pre=True)
-    def parse_allowed_origins(cls, v):
+    @field_validator("ALLOWED_ORIGINS", mode="before")
+    @classmethod
+    def parse_allowed_origins(cls, v: Union[str, List[str]]) -> List[str]:
         if isinstance(v, str):
             return [origin.strip() for origin in v.split(",")]
         return v
 
-    @validator("ALLOWED_HOSTS", pre=True)
-    def parse_allowed_hosts(cls, v):
+    @field_validator("ALLOWED_HOSTS", mode="before")
+    @classmethod
+    def parse_allowed_hosts(cls, v: Union[str, List[str]]) -> List[str]:
         if isinstance(v, str):
             return [host.strip() for host in v.split(",")]
         return v
 
-    class Config:
-        env_file = ".env"
-        env_file_encoding = "utf-8"
-        case_sensitive = True
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        case_sensitive=True,
+    )
 
 
 @lru_cache()
