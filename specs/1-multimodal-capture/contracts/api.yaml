@@ -1,0 +1,1327 @@
+openapi: 3.1.0
+info:
+  title: 多模输入灵感记录器 API
+  description: |
+    支持语音、文字、图片三种输入方式的灵感记录系统API。
+
+    核心功能:
+    - 多模态输入(语音/文字/图片)
+    - AI自动分类和摘要
+    - 本地离线存储
+    - Notion异步同步
+
+    性能目标:
+    - API响应时间 < 1秒
+    - 支持离线操作
+    - 99%核心功能可用性
+
+  version: 1.0.0
+  contact:
+    name: API Support
+    email: support@example.com
+  license:
+    name: MIT
+    url: https://opensource.org/licenses/MIT
+
+servers:
+  - url: http://localhost:8000/api/v1
+    description: 本地开发环境
+  - url: https://api.inspiration-recorder.com/v1
+    description: 生产环境
+
+tags:
+  - name: records
+    description: 灵感记录管理
+  - name: sync
+    description: 同步管理
+  - name: ai
+    description: AI处理服务
+  - name: preferences
+    description: 用户配置
+  - name: health
+    description: 健康检查
+
+paths:
+  # ==================== 灵感记录端点 ====================
+  /records:
+    get:
+      tags: [records]
+      summary: 获取灵感记录列表
+      description: 分页获取灵感记录,支持筛选和排序
+      operationId: listRecords
+      parameters:
+        - name: page
+          in: query
+          description: 页码(从1开始)
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+        - name: page_size
+          in: query
+          description: 每页记录数
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+        - name: input_type
+          in: query
+          description: 按输入类型筛选
+          schema:
+            $ref: '#/components/schemas/InputType'
+        - name: sync_status
+          in: query
+          description: 按同步状态筛选
+          schema:
+            $ref: '#/components/schemas/SyncStatus'
+        - name: search
+          in: query
+          description: 搜索关键词(标题和内容)
+          schema:
+            type: string
+            maxLength: 100
+        - name: sort_by
+          in: query
+          description: 排序字段
+          schema:
+            type: string
+            enum: [created_at, updated_at, title]
+            default: created_at
+        - name: sort_order
+          in: query
+          description: 排序方向
+          schema:
+            type: string
+            enum: [asc, desc]
+            default: desc
+      responses:
+        '200':
+          description: 成功返回记录列表
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/InspirationRecord'
+                  pagination:
+                    $ref: '#/components/schemas/PaginationMeta'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+    post:
+      tags: [records]
+      summary: 创建灵感记录
+      description: |
+        创建新的灵感记录。记录立即保存到本地数据库,后台自动触发AI处理和Notion同步。
+
+        处理流程:
+        1. 验证输入数据
+        2. 保存到本地SQLite
+        3. 加入AI处理队列
+        4. 加入同步队列
+        5. 立即返回记录ID
+      operationId: createRecord
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/InspirationRecordCreate'
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                title:
+                  type: string
+                  maxLength: 200
+                content:
+                  type: string
+                  maxLength: 10000
+                input_type:
+                  $ref: '#/components/schemas/InputType'
+                audio_file:
+                  type: string
+                  format: binary
+                  description: 语音文件(仅input_type=voice时需要)
+                image_file:
+                  type: string
+                  format: binary
+                  description: 图片文件(仅input_type=image时需要)
+      responses:
+        '201':
+          description: 记录创建成功
+          headers:
+            Location:
+              description: 新创建记录的URL
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InspirationRecord'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '413':
+          description: 文件过大
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: "Payload Too Large"
+                message: "语音文件大小不能超过10MB"
+                code: "FILE_TOO_LARGE"
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '507':
+          description: 存储空间不足
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: "Insufficient Storage"
+                message: "已达到1000条记录上限,请清理旧记录"
+                code: "STORAGE_LIMIT_REACHED"
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /records/{record_id}:
+    get:
+      tags: [records]
+      summary: 获取单条记录详情
+      operationId: getRecord
+      parameters:
+        - $ref: '#/components/parameters/RecordId'
+      responses:
+        '200':
+          description: 成功返回记录详情
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InspirationRecord'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+    put:
+      tags: [records]
+      summary: 更新灵感记录
+      description: |
+        更新现有记录。更新后自动触发重新同步到Notion。
+
+        注意事项:
+        - 使用乐观锁防止并发冲突(需提供version字段)
+        - 更新成功后version自动+1
+        - 自动更新updated_at时间戳
+      operationId: updateRecord
+      parameters:
+        - $ref: '#/components/parameters/RecordId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/InspirationRecordUpdate'
+      responses:
+        '200':
+          description: 更新成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InspirationRecord'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: 版本冲突
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: "Conflict"
+                message: "记录已被其他设备修改,请刷新后重试"
+                code: "VERSION_CONFLICT"
+                details:
+                  current_version: 3
+                  provided_version: 2
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+    delete:
+      tags: [records]
+      summary: 删除灵感记录
+      description: |
+        删除记录(软删除)。如果记录已同步到Notion,会同时删除Notion页面。
+      operationId: deleteRecord
+      parameters:
+        - $ref: '#/components/parameters/RecordId'
+      responses:
+        '204':
+          description: 删除成功
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /records/{record_id}/audio:
+    get:
+      tags: [records]
+      summary: 获取语音文件
+      description: 下载原始语音录音文件
+      operationId: getRecordAudio
+      parameters:
+        - $ref: '#/components/parameters/RecordId'
+      responses:
+        '200':
+          description: 成功返回语音文件
+          content:
+            audio/mp4:
+              schema:
+                type: string
+                format: binary
+            audio/mpeg:
+              schema:
+                type: string
+                format: binary
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /records/{record_id}/image:
+    get:
+      tags: [records]
+      summary: 获取图片文件
+      description: 下载原始图片文件
+      operationId: getRecordImage
+      parameters:
+        - $ref: '#/components/parameters/RecordId'
+      responses:
+        '200':
+          description: 成功返回图片文件
+          content:
+            image/jpeg:
+              schema:
+                type: string
+                format: binary
+            image/png:
+              schema:
+                type: string
+                format: binary
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  # ==================== AI处理端点 ====================
+  /ai/classify:
+    post:
+      tags: [ai]
+      summary: 内容分类
+      description: 使用LLM对文本内容进行分类
+      operationId: classifyContent
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [content]
+              properties:
+                content:
+                  type: string
+                  minLength: 10
+                  maxLength: 10000
+                  description: 需要分类的文本内容
+      responses:
+        '200':
+          description: 分类成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  categories:
+                    type: array
+                    items:
+                      type: string
+                    description: 分类标签列表
+                    example: ["产品创意", "技术灵感"]
+                  confidence:
+                    type: number
+                    format: float
+                    minimum: 0
+                    maximum: 1
+                    description: 分类置信度
+                    example: 0.92
+                  from_cache:
+                    type: boolean
+                    description: 是否来自缓存
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '429':
+          $ref: '#/components/responses/RateLimitExceeded'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '503':
+          description: LLM服务不可用
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: "Service Unavailable"
+                message: "LLM服务暂时不可用,已启用降级分类器"
+                code: "LLM_UNAVAILABLE"
+
+  /ai/summarize:
+    post:
+      tags: [ai]
+      summary: 内容摘要
+      description: 使用LLM生成文本摘要
+      operationId: summarizeContent
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [content]
+              properties:
+                content:
+                  type: string
+                  minLength: 10
+                  maxLength: 10000
+                max_length:
+                  type: integer
+                  minimum: 20
+                  maximum: 200
+                  default: 50
+                  description: 摘要最大字数
+      responses:
+        '200':
+          description: 摘要生成成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  summary:
+                    type: string
+                    description: 生成的摘要
+                    example: "AI会议助手产品构想:实时转写+智能摘要+待办提醒"
+                  token_usage:
+                    type: integer
+                    description: 消耗的token数
+                  from_cache:
+                    type: boolean
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '429':
+          $ref: '#/components/responses/RateLimitExceeded'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /ai/process:
+    post:
+      tags: [ai]
+      summary: 综合处理(分类+摘要)
+      description: |
+        一次调用同时获取分类和摘要,优化API调用次数和成本
+      operationId: processContent
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [content]
+              properties:
+                content:
+                  type: string
+                  minLength: 10
+                  maxLength: 10000
+                input_type:
+                  $ref: '#/components/schemas/InputType'
+                max_summary_length:
+                  type: integer
+                  default: 50
+      responses:
+        '200':
+          description: 处理成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  categories:
+                    type: array
+                    items:
+                      type: string
+                  summary:
+                    type: string
+                  keywords:
+                    type: array
+                    items:
+                      type: string
+                    description: 提取的关键词
+                  token_usage:
+                    type: integer
+                  from_cache:
+                    type: boolean
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '429':
+          $ref: '#/components/responses/RateLimitExceeded'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  # ==================== 同步管理端点 ====================
+  /sync/status:
+    get:
+      tags: [sync]
+      summary: 获取同步状态
+      description: 查询当前同步队列状态和统计信息
+      operationId: getSyncStatus
+      responses:
+        '200':
+          description: 成功返回同步状态
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  total_records:
+                    type: integer
+                    description: 总记录数
+                  synced_count:
+                    type: integer
+                    description: 已同步记录数
+                  pending_count:
+                    type: integer
+                    description: 待同步记录数
+                  failed_count:
+                    type: integer
+                    description: 同步失败记录数
+                  last_sync_at:
+                    type: string
+                    format: date-time
+                    description: 最后同步时间
+                  next_sync_at:
+                    type: string
+                    format: date-time
+                    description: 下次定时同步时间
+                  sync_enabled:
+                    type: boolean
+                    description: 同步功能是否启用
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /sync/trigger:
+    post:
+      tags: [sync]
+      summary: 手动触发同步
+      description: |
+        立即触发同步所有待同步记录到Notion
+
+        优先级: URGENT (优先处理)
+      operationId: triggerSync
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                record_ids:
+                  type: array
+                  items:
+                    type: integer
+                  description: 指定要同步的记录ID列表(为空则同步全部)
+      responses:
+        '202':
+          description: 同步任务已创建
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: "同步任务已创建,正在后台处理"
+                  task_ids:
+                    type: array
+                    items:
+                      type: string
+                    description: ARQ任务ID列表
+                  estimated_time:
+                    type: integer
+                    description: 预计完成时间(秒)
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /sync/queue:
+    get:
+      tags: [sync]
+      summary: 获取同步队列详情
+      description: 查看同步队列中的任务列表
+      operationId: getSyncQueue
+      parameters:
+        - name: status
+          in: query
+          description: 按状态筛选
+          schema:
+            type: integer
+            enum: [0, 1, 2, 3]  # pending, processing, completed, failed
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 50
+      responses:
+        '200':
+          description: 成功返回队列列表
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  tasks:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/SyncTask'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /sync/queue/{task_id}:
+    get:
+      tags: [sync]
+      summary: 查询同步任务状态
+      operationId: getSyncTask
+      parameters:
+        - name: task_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: 成功返回任务状态
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SyncTask'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    delete:
+      tags: [sync]
+      summary: 取消同步任务
+      operationId: cancelSyncTask
+      parameters:
+        - name: task_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '204':
+          description: 任务已取消
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: 任务已完成,无法取消
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /sync/retry-failed:
+    post:
+      tags: [sync]
+      summary: 重试所有失败的同步任务
+      operationId: retryFailedSync
+      responses:
+        '202':
+          description: 重试任务已创建
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  retry_count:
+                    type: integer
+                    description: 重试的任务数量
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  # ==================== 用户配置端点 ====================
+  /preferences:
+    get:
+      tags: [preferences]
+      summary: 获取用户配置
+      operationId: getPreferences
+      responses:
+        '200':
+          description: 成功返回配置
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserPreferences'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+    put:
+      tags: [preferences]
+      summary: 更新用户配置
+      operationId: updatePreferences
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UserPreferencesUpdate'
+      responses:
+        '200':
+          description: 配置更新成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserPreferences'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /preferences/test-notion:
+    post:
+      tags: [preferences]
+      summary: 测试Notion连接
+      description: 验证Notion Token和Database ID是否有效
+      operationId: testNotionConnection
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [notion_token, notion_database_id]
+              properties:
+                notion_token:
+                  type: string
+                notion_database_id:
+                  type: string
+      responses:
+        '200':
+          description: 连接成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  database_title:
+                    type: string
+                    description: Notion数据库标题
+                  message:
+                    type: string
+                    example: "Notion连接成功"
+        '400':
+          description: 连接失败
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: false
+                  error:
+                    type: string
+                  message:
+                    type: string
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /preferences/test-llm:
+    post:
+      tags: [preferences]
+      summary: 测试LLM连接
+      description: 验证LLM API配置是否有效
+      operationId: testLLMConnection
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [openai_base_url, openai_model]
+              properties:
+                openai_base_url:
+                  type: string
+                  format: uri
+                openai_api_key:
+                  type: string
+                openai_model:
+                  type: string
+      responses:
+        '200':
+          description: 连接成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  model_info:
+                    type: object
+                  response_time_ms:
+                    type: integer
+        '400':
+          description: 连接失败
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  error:
+                    type: string
+
+  # ==================== 健康检查端点 ====================
+  /health:
+    get:
+      tags: [health]
+      summary: 基础健康检查
+      operationId: healthCheck
+      responses:
+        '200':
+          description: 服务健康
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: "healthy"
+                  timestamp:
+                    type: string
+                    format: date-time
+                  version:
+                    type: string
+                    example: "1.0.0"
+
+  /health/detailed:
+    get:
+      tags: [health]
+      summary: 详细健康检查
+      description: 检查所有依赖服务的健康状态
+      operationId: detailedHealthCheck
+      responses:
+        '200':
+          description: 详细健康状态
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    enum: [healthy, degraded, unhealthy]
+                  checks:
+                    type: object
+                    properties:
+                      database:
+                        $ref: '#/components/schemas/HealthCheck'
+                      redis:
+                        $ref: '#/components/schemas/HealthCheck'
+                      notion_api:
+                        $ref: '#/components/schemas/HealthCheck'
+                      llm_service:
+                        $ref: '#/components/schemas/HealthCheck'
+                  sync_queue_size:
+                    type: integer
+                  timestamp:
+                    type: string
+                    format: date-time
+
+# ==================== 组件定义 ====================
+components:
+  schemas:
+    # 枚举类型
+    InputType:
+      type: string
+      enum: [voice, text, image]
+      description: 输入方式
+
+    SyncStatus:
+      type: integer
+      enum: [0, 1, 2, 3, 4]
+      description: |
+        同步状态:
+        - 0: pending (待同步)
+        - 1: syncing (同步中)
+        - 2: synced (已同步)
+        - 3: failed (失败)
+        - 4: conflict (冲突)
+
+    AIProcessingStatus:
+      type: integer
+      enum: [0, 1, 2, 3]
+      description: |
+        AI处理状态:
+        - 0: pending (待处理)
+        - 1: processing (处理中)
+        - 2: completed (已完成)
+        - 3: failed (失败)
+
+    # 核心实体
+    InspirationRecord:
+      type: object
+      required:
+        - id
+        - title
+        - content
+        - input_type
+        - sync_status
+        - created_at
+        - updated_at
+        - version
+        - ai_processing_status
+      properties:
+        id:
+          type: integer
+          description: 唯一标识符
+          example: 1
+        title:
+          type: string
+          maxLength: 200
+          description: 灵感标题
+          example: "AI产品创意:智能会议助手"
+        content:
+          type: string
+          description: 原始内容
+          example: "今天开会时想到可以做一个AI会议助手..."
+        input_type:
+          $ref: '#/components/schemas/InputType'
+        category_tags:
+          type: array
+          items:
+            type: string
+          nullable: true
+          description: AI生成的分类标签
+          example: ["产品创意", "技术灵感"]
+        summary:
+          type: string
+          nullable: true
+          maxLength: 200
+          description: AI生成的摘要
+          example: "AI会议助手产品构想:实时转写+智能摘要+待办提醒"
+        notion_page_id:
+          type: string
+          nullable: true
+          description: Notion页面ID
+        sync_status:
+          $ref: '#/components/schemas/SyncStatus'
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+        version:
+          type: integer
+          minimum: 1
+          description: 乐观锁版本号
+        audio_file_path:
+          type: string
+          nullable: true
+        image_file_path:
+          type: string
+          nullable: true
+        ocr_confidence:
+          type: number
+          format: float
+          minimum: 0
+          maximum: 1
+          nullable: true
+        ai_processing_status:
+          $ref: '#/components/schemas/AIProcessingStatus'
+        ai_error_message:
+          type: string
+          nullable: true
+
+    InspirationRecordCreate:
+      type: object
+      required:
+        - title
+        - content
+        - input_type
+      properties:
+        title:
+          type: string
+          minLength: 1
+          maxLength: 200
+        content:
+          type: string
+          minLength: 10
+          maxLength: 10000
+        input_type:
+          $ref: '#/components/schemas/InputType'
+        audio_file_path:
+          type: string
+          nullable: true
+        image_file_path:
+          type: string
+          nullable: true
+        ocr_confidence:
+          type: number
+          format: float
+          minimum: 0
+          maximum: 1
+          nullable: true
+
+    InspirationRecordUpdate:
+      type: object
+      required:
+        - version
+      properties:
+        title:
+          type: string
+          minLength: 1
+          maxLength: 200
+        content:
+          type: string
+          minLength: 10
+          maxLength: 10000
+        category_tags:
+          type: array
+          items:
+            type: string
+        summary:
+          type: string
+          maxLength: 200
+        version:
+          type: integer
+          description: 当前版本号(用于乐观锁)
+
+    SyncTask:
+      type: object
+      properties:
+        id:
+          type: string
+          description: ARQ任务ID
+        record_id:
+          type: integer
+        operation:
+          type: string
+          enum: [create, update, delete]
+        status:
+          type: integer
+          enum: [0, 1, 2, 3]
+        retry_count:
+          type: integer
+        max_retries:
+          type: integer
+        last_attempt_at:
+          type: string
+          format: date-time
+          nullable: true
+        next_retry_at:
+          type: string
+          format: date-time
+          nullable: true
+        error_message:
+          type: string
+          nullable: true
+        priority:
+          type: integer
+          enum: [0, 1, 2]
+        created_at:
+          type: string
+          format: date-time
+        completed_at:
+          type: string
+          format: date-time
+          nullable: true
+
+    UserPreferences:
+      type: object
+      properties:
+        id:
+          type: integer
+          enum: [1]
+        notion_token:
+          type: string
+          nullable: true
+          writeOnly: true
+        notion_database_id:
+          type: string
+          nullable: true
+        openai_base_url:
+          type: string
+          format: uri
+        openai_api_key:
+          type: string
+          nullable: true
+          writeOnly: true
+        openai_model:
+          type: string
+        encryption_enabled:
+          type: boolean
+        sync_interval:
+          type: integer
+          minimum: 0
+          maximum: 86400
+        sync_on_network:
+          type: boolean
+        ui_language:
+          type: string
+          enum: [zh_CN, en_US]
+        theme_mode:
+          type: string
+          enum: [system, light, dark]
+        max_voice_duration:
+          type: integer
+          minimum: 60
+          maximum: 600
+        auto_classify:
+          type: boolean
+        auto_summarize:
+          type: boolean
+        updated_at:
+          type: string
+          format: date-time
+
+    UserPreferencesUpdate:
+      type: object
+      properties:
+        notion_token:
+          type: string
+        notion_database_id:
+          type: string
+        openai_base_url:
+          type: string
+          format: uri
+        openai_api_key:
+          type: string
+        openai_model:
+          type: string
+        encryption_enabled:
+          type: boolean
+        sync_interval:
+          type: integer
+          minimum: 0
+          maximum: 86400
+        sync_on_network:
+          type: boolean
+        ui_language:
+          type: string
+          enum: [zh_CN, en_US]
+        theme_mode:
+          type: string
+          enum: [system, light, dark]
+        max_voice_duration:
+          type: integer
+          minimum: 60
+          maximum: 600
+        auto_classify:
+          type: boolean
+        auto_summarize:
+          type: boolean
+
+    # 通用组件
+    PaginationMeta:
+      type: object
+      properties:
+        page:
+          type: integer
+          minimum: 1
+        page_size:
+          type: integer
+          minimum: 1
+          maximum: 100
+        total_pages:
+          type: integer
+          minimum: 0
+        total_count:
+          type: integer
+          minimum: 0
+        has_next:
+          type: boolean
+        has_prev:
+          type: boolean
+
+    Error:
+      type: object
+      required:
+        - error
+        - message
+      properties:
+        error:
+          type: string
+          description: 错误类型
+        message:
+          type: string
+          description: 错误描述
+        code:
+          type: string
+          description: 错误代码
+        details:
+          type: object
+          description: 额外的错误详情
+        timestamp:
+          type: string
+          format: date-time
+
+    ValidationError:
+      type: object
+      properties:
+        error:
+          type: string
+          example: "Validation Error"
+        message:
+          type: string
+        errors:
+          type: array
+          items:
+            type: object
+            properties:
+              field:
+                type: string
+              message:
+                type: string
+              value:
+                type: string
+
+    HealthCheck:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [healthy, degraded, unhealthy]
+        message:
+          type: string
+        response_time_ms:
+          type: integer
+
+  parameters:
+    RecordId:
+      name: record_id
+      in: path
+      required: true
+      description: 灵感记录ID
+      schema:
+        type: integer
+        minimum: 1
+
+  responses:
+    BadRequest:
+      description: 请求参数错误
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error: "Bad Request"
+            message: "请求参数不正确"
+            code: "INVALID_REQUEST"
+
+    NotFound:
+      description: 资源不存在
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error: "Not Found"
+            message: "请求的资源不存在"
+            code: "RESOURCE_NOT_FOUND"
+
+    ValidationError:
+      description: 数据验证失败
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ValidationError'
+          example:
+            error: "Validation Error"
+            message: "数据验证失败"
+            errors:
+              - field: "content"
+                message: "内容至少需要10个字符"
+                value: "太短"
+
+    RateLimitExceeded:
+      description: 请求频率超限
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error: "Too Many Requests"
+            message: "请求频率超限,请稍后再试"
+            code: "RATE_LIMIT_EXCEEDED"
+      headers:
+        X-RateLimit-Limit:
+          description: 速率限制(请求数/小时)
+          schema:
+            type: integer
+        X-RateLimit-Remaining:
+          description: 剩余请求配额
+          schema:
+            type: integer
+        X-RateLimit-Reset:
+          description: 配额重置时间(Unix时间戳)
+          schema:
+            type: integer
+        Retry-After:
+          description: 建议重试延迟(秒)
+          schema:
+            type: integer
+
+    InternalError:
+      description: 服务器内部错误
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error: "Internal Server Error"
+            message: "服务器内部错误,请稍后重试"
+            code: "INTERNAL_ERROR"
+
+  securitySchemes:
+    ApiKeyAuth:
+      type: apiKey
+      in: header
+      name: X-API-Key
+      description: API密钥(可选,用于生产环境访问控制)
+
+# 安全要求(可选,取决于部署环境)
+security:
+  - ApiKeyAuth: []
