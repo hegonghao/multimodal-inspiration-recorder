@@ -30,14 +30,14 @@ description: "Task list for multimodal inspiration recorder feature implementati
 
 **Purpose**: Project initialization and basic structure
 
-- [ ] T001 Create Flutter + FastAPI project structure per implementation plan
-- [ ] T002 Initialize Flutter project with required dependencies (Drift, record, ML Kit, etc.)
-- [ ] T003 Initialize Python FastAPI project with required dependencies (OpenAI, Notion, ARQ, etc.)
-- [ ] T004 [P] Configure Flutter linting and formatting (analysis_options.yaml)
-- [ ] T005 [P] Configure Python linting and formatting (ruff, black, mypy)
-- [ ] T006 Create Docker configuration files (Dockerfile, docker-compose.yml)
-- [ ] T007 Create environment configuration files (.env.example, .env)
-- [ ] T008 Setup Git repository with .gitignore for Flutter/Python projects
+- [X] T001 Create Flutter + FastAPI project structure per implementation plan
+- [X] T002 Initialize Flutter project with required dependencies (Drift, record, ML Kit, etc.)
+- [X] T003 Initialize Python FastAPI project with required dependencies (OpenAI, Notion, ARQ, etc.)
+- [X] T004 [P] Configure Flutter linting and formatting (analysis_options.yaml)
+- [X] T005 [P] Configure Python linting and formatting (ruff, black, mypy)
+- [X] T006 Create Docker configuration files (Dockerfile, docker-compose.yml)
+- [X] T007 Create environment configuration files (.env.example, .env)
+- [X] T008 Setup Git repository with .gitignore for Flutter/Python projects
 
 ---
 
@@ -47,7 +47,7 @@ description: "Task list for multimodal inspiration recorder feature implementati
 
 **⚠️ CRITICAL**: No user story work can begin until this phase is complete
 
-- [ ] T009 Setup SQLite database schema and migrations framework (Alembic for backend, Drift for Flutter)
+- [X] T009 Setup SQLite database schema and migrations framework (Alembic for backend, Drift for Flutter)
 - [ ] T010 [P] Implement database connection management in backend/src/database/connection.py
 - [ ] T011 [P] Implement Drift database class in app/lib/data/database.dart
 - [ ] T012 Create InspirationRecord entity in both backend and frontend
