@@ -1,6 +1,5 @@
 """
 Database package
-pn“Þ¥!‹Œåwýp
 """
 
 from src.database.base import Base, IDMixin, TableNameMixin, TimestampMixin

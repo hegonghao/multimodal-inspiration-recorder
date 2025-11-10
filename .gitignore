@@ -113,3 +113,7 @@ htmlcov/
 
 # Specify directories
 .specify/memory/
+*.env*
+.env
+.env.*
+!.env.example

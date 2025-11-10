@@ -95,7 +95,7 @@ def setup_logging():
                 dsn=settings.SENTRY_DSN,
                 integrations=[
                     sentry_logging,
-                    FastApiIntegration(auto_enabling_integrations=False),
+                    FastApiIntegration(),
                     HttpxIntegration(),
                 ],
                 traces_sample_rate=0.1,

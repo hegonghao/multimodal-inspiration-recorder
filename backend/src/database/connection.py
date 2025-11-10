@@ -56,16 +56,24 @@ def create_engine() -> AsyncEngine:
 
     logger.info(f"Creating database engine: {settings.DATABASE_URL}")
 
-    # Create async engine
-    engine = create_async_engine(
-        settings.DATABASE_URL,
-        echo=settings.DEBUG,  # Log SQL queries in debug mode
-        poolclass=pool.NullPool if "sqlite" in settings.DATABASE_URL else pool.QueuePool,
-        pool_size=5 if "sqlite" not in settings.DATABASE_URL else None,
-        max_overflow=10 if "sqlite" not in settings.DATABASE_URL else None,
-        pool_pre_ping=True,  # Verify connections before using
-        connect_args={"check_same_thread": False} if "sqlite" in settings.DATABASE_URL else {},
-    )
+    # Create async engine with database-specific configuration
+    is_sqlite = "sqlite" in settings.DATABASE_URL
+
+    engine_kwargs = {
+        "echo": settings.DEBUG,  # Log SQL queries in debug mode
+        "poolclass": pool.NullPool if is_sqlite else pool.QueuePool,
+    }
+
+    if is_sqlite:
+        engine_kwargs["connect_args"] = {"check_same_thread": False}
+    else:
+        engine_kwargs.update({
+            "pool_size": 5,
+            "max_overflow": 10,
+            "pool_pre_ping": True,
+        })
+
+    engine = create_async_engine(settings.DATABASE_URL, **engine_kwargs)
 
     # Configure SQLite-specific settings
     if "sqlite" in settings.DATABASE_URL:

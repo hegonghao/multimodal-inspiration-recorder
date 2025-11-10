@@ -26,7 +26,7 @@ dependencies:
   path: ^1.8.3
 
   # Audio Recording
-  record: ^5.0.4
+  record: ^6.1.2
   permission_handler: ^11.1.0
   audio_waveforms: ^1.0.5
 
@@ -44,7 +44,7 @@ dependencies:
   dio: ^5.4.0
 
   # Connectivity
-  connectivity_plus: ^5.0.2
+  connectivity_plus: ^6.0.0
   internet_connection_checker: ^1.0.0+1
 
   # Secure Storage
@@ -52,7 +52,7 @@ dependencies:
   shared_preferences: ^2.2.2
 
   # File Handling
-  file_picker: ^6.1.1
+  file_picker: ^10.0.0
   open_filex: ^4.3.4
 
   # Date & Time
@@ -67,10 +67,10 @@ dependencies:
   logger: ^2.0.2+1
 
   # Background Tasks (Android WorkManager, iOS BackgroundFetch)
-  workmanager: ^0.5.2
+  workmanager: ^0.9.0
 
   # Notifications
-  flutter_local_notifications: ^16.3.0
+  flutter_local_notifications: ^19.0.0
 
   # UI Utilities
   shimmer: ^3.0.0
@@ -103,9 +103,9 @@ flutter:
     - assets/images/
     - assets/sounds/
 
-  fonts:
-    - family: Roboto
-      fonts:
-        - asset: fonts/Roboto-Regular.ttf
-        - asset: fonts/Roboto-Bold.ttf
-          weight: 700
+  # fonts:
+  #   - family: Roboto
+  #     fonts:
+  #       - asset: fonts/Roboto-Regular.ttf
+  #       - asset: fonts/Roboto-Bold.ttf
+  #         weight: 700

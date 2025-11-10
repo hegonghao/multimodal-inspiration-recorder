@@ -1,90 +1,197 @@
 version: '3.8'
 
 services:
-  # FastAPI Backend Service
+  # ====================
+  # Backend API Service
+  # ====================
   backend:
     build:
       context: ./backend
       dockerfile: Dockerfile
+    container_name: inspiration-recorder-backend
+    restart: unless-stopped
     ports:
       - "8000:8000"
     environment:
+      # Application
       - ENVIRONMENT=production
-      - REDIS_URL=redis://redis:6379
+      - DEBUG=false
       - SECRET_KEY=${SECRET_KEY}
+
+      # Database (async for FastAPI)
+      - DATABASE_URL=sqlite+aiosqlite:///./data/inspirations.db
+
+      # Redis
+      - REDIS_URL=redis://redis:6379/0
+      - ARQ_REDIS_URL=redis://redis:6379/1
+
+      # API Keys
       - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - OPENAI_BASE_URL=${OPENAI_BASE_URL}
+      - OPENAI_MODEL=${OPENAI_MODEL}
+      - DEEPGRAM_API_KEY=${DEEPGRAM_API_KEY}
+      - PADDLEOCR_API_URL=${PADDLEOCR_API_URL}
+      - PADDLEOCR_TOKEN=${PADDLEOCR_TOKEN}
+      - NOTION_TOKEN=${NOTION_TOKEN:-}
+      - NOTION_DATABASE_ID=${NOTION_DATABASE_ID:-}
+      - NOTION_SYNC_ENABLED=${NOTION_SYNC_ENABLED:-true}
+
+      # Monitoring
+      - SENTRY_DSN=${SENTRY_DSN}
+
+      # CORS
+      - CORS_ORIGINS=${CORS_ORIGINS}
+
+      # Performance
+      - WORKERS=4
+      - DB_POOL_SIZE=20
+      - DB_MAX_OVERFLOW=40
+    volumes:
+      - backend-data:/app/data
+      - backend-logs:/app/logs
+      - backend-uploads:/app/uploads
     depends_on:
       - redis
-    volumes:
-      - ./logs:/app/logs
-    restart: unless-stopped
     networks:
       - app-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/v1/health/liveness"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
 
+  # ====================
   # Redis Service
+  # ====================
   redis:
     image: redis:7-alpine
+    container_name: inspiration-recorder-redis
+    restart: unless-stopped
     ports:
       - "6379:6379"
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
     volumes:
-      - redis_data:/data
-    restart: unless-stopped
+      - redis-data:/data
     networks:
       - app-network
-    command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
 
-  # Nginx Reverse Proxy (optional)
-  nginx:
-    image: nginx:alpine
-    ports:
-      - "80:80"
-      - "443:443"
+  # ====================
+  # ARQ Worker Service
+  # ====================
+  worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: inspiration-recorder-worker
+    restart: unless-stopped
+    command: python -m arq src.app.worker.WorkerSettingsClass
+    environment:
+      # Application
+      - ENVIRONMENT=production
+      - DEBUG=false
+      - SECRET_KEY=${SECRET_KEY}
+
+      # Database (async for FastAPI)
+      - DATABASE_URL=sqlite+aiosqlite:///./data/inspirations.db
+
+      # Redis
+      - REDIS_URL=redis://redis:6379/0
+      - ARQ_REDIS_URL=redis://redis:6379/1
+
+      # API Keys
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - OPENAI_BASE_URL=${OPENAI_BASE_URL}
+      - OPENAI_MODEL=${OPENAI_MODEL}
+      - DEEPGRAM_API_KEY=${DEEPGRAM_API_KEY}
+      - PADDLEOCR_API_URL=${PADDLEOCR_API_URL}
+      - PADDLEOCR_TOKEN=${PADDLEOCR_TOKEN}
+      - NOTION_TOKEN=${NOTION_TOKEN:-}
+      - NOTION_DATABASE_ID=${NOTION_DATABASE_ID:-}
+      - NOTION_SYNC_ENABLED=${NOTION_SYNC_ENABLED:-true}
+
+      # Monitoring
+      - SENTRY_DSN=${SENTRY_DSN}
     volumes:
-      - ./nginx.conf:/etc/nginx/nginx.conf
-      - ./ssl:/etc/nginx/ssl
+      - backend-data:/app/data
+      - backend-logs:/app/logs
+      - backend-uploads:/app/uploads
     depends_on:
-      - backend
-    restart: unless-stopped
+      - redis
     networks:
       - app-network
 
-  # Prometheus Monitoring (optional)
+  # ====================
+  # Prometheus (Optional Monitoring)
+  # ====================
   prometheus:
     image: prom/prometheus:latest
+    container_name: inspiration-recorder-prometheus
+    restart: unless-stopped
     ports:
       - "9090:9090"
     volumes:
-      - ./prometheus.yml:/etc/prometheus/prometheus.yml
-      - prometheus_data:/prometheus
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus-data:/prometheus
     command:
       - '--config.file=/etc/prometheus/prometheus.yml'
       - '--storage.tsdb.path=/prometheus'
-      - '--web.console.libraries=/etc/prometheus/console_libraries'
-      - '--web.console.templates=/etc/prometheus/consoles'
-    restart: unless-stopped
+      - '--web.console.libraries=/usr/share/prometheus/console_libraries'
+      - '--web.console.templates=/usr/share/prometheus/consoles'
     networks:
       - app-network
+    profiles:
+      - monitoring
 
-  # Grafana Dashboard (optional)
+  # ====================
+  # Grafana (Optional Monitoring)
+  # ====================
   grafana:
     image: grafana/grafana:latest
+    container_name: inspiration-recorder-grafana
+    restart: unless-stopped
     ports:
-      - "3001:3000"
+      - "3000:3000"
     environment:
-      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_PASSWORD:-admin}
+      - GF_INSTALL_PLUGINS=
     volumes:
-      - grafana_data:/var/lib/grafana
+      - grafana-data:/var/lib/grafana
+      - ./monitoring/grafana/dashboards:/etc/grafana/provisioning/dashboards
+      - ./monitoring/grafana/datasources:/etc/grafana/provisioning/datasources
     depends_on:
       - prometheus
-    restart: unless-stopped
     networks:
       - app-network
+    profiles:
+      - monitoring
 
+# ====================
+# Volumes
+# ====================
 volumes:
-  redis_data:
-  prometheus_data:
-  grafana_data:
+  backend-data:
+    driver: local
+  backend-logs:
+    driver: local
+  backend-uploads:
+    driver: local
+  redis-data:
+    driver: local
+  prometheus-data:
+    driver: local
+  grafana-data:
+    driver: local
 
+# ====================
+# Networks
+# ====================
 networks:
   app-network:
     driver: bridge

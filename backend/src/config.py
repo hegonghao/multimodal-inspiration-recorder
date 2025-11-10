@@ -26,7 +26,7 @@ class Settings(BaseSettings):
     ALLOWED_ORIGINS: List[str] = ["*"]
 
     # Security
-    SECRET_KEY: str
+    SECRET_KEY: str = "dev-secret-key-change-in-production"
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
 
@@ -38,9 +38,9 @@ class Settings(BaseSettings):
     REDIS_PASSWORD: Optional[str] = None
 
     # LLM API Configuration
-    OPENAI_API_KEY: str
-    OPENAI_BASE_URL: str = "https://api.openai.com/v1"
-    OPENAI_MODEL: str = "gpt-3.5-turbo"
+    OPENAI_API_KEY: str = "not-needed-for-ollama"  # Default for local Ollama
+    OPENAI_BASE_URL: str = "http://localhost:11434/v1"
+    OPENAI_MODEL: str = "llama3.1"
     OPENAI_MAX_TOKENS: int = 1000
     OPENAI_TEMPERATURE: float = 0.7
 
@@ -69,6 +69,30 @@ class Settings(BaseSettings):
     # Monitoring
     METRICS_ENABLED: bool = True
     SENTRY_DSN: Optional[str] = None
+
+    # Notion Integration
+    # Note: .env uses NOTION_TOKEN, config uses NOTION_API_KEY (for consistency with OpenAI)
+    # Both are accepted, NOTION_TOKEN takes precedence
+    NOTION_TOKEN: Optional[str] = None  # Primary
+    NOTION_API_KEY: Optional[str] = None  # Alias for backward compatibility
+    NOTION_DATABASE_ID: Optional[str] = None
+    NOTION_SYNC_ENABLED: bool = False
+    NOTION_SYNC_INTERVAL_MINUTES: int = 15
+    NOTION_SYNC_BATCH_SIZE: int = 10
+
+    # Speech-to-Text (Deepgram)
+    DEEPGRAM_API_KEY: Optional[str] = None
+
+    # OCR (PaddleOCR-VL)
+    PADDLEOCR_API_URL: Optional[str] = None
+    PADDLEOCR_TOKEN: Optional[str] = None
+
+    # Feature Flags
+    ENABLE_VOICE_INPUT: bool = True
+    ENABLE_IMAGE_OCR: bool = True
+    ENABLE_TEXT_INPUT: bool = True
+    ENABLE_NOTION_SYNC: bool = False
+    ENABLE_AI_PROCESSING: bool = True
 
     @field_validator("ENVIRONMENT")
     @classmethod
