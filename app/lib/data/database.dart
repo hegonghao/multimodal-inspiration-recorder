@@ -54,10 +54,14 @@ class UserPreferences extends Table {
   IntColumn get id => integer().withDefault(const Constant(1))();
   TextColumn get notionToken => text().nullable()();
   TextColumn get notionDatabaseId => text().nullable()();
-  TextColumn get openaiBaseUrl => text().withDefault(const Constant('https://cnapi.kksj.org/v1'))();
+  // LLM API configuration - empty defaults, let backend use .env values
+  // Users should NOT need to configure these on mobile app
+  TextColumn get openaiBaseUrl => text().withDefault(const Constant(''))();
   TextColumn get openaiApiKey => text().nullable()();
-  TextColumn get openaiModel => text().withDefault(const Constant('gpt-4o-mini'))();
-  TextColumn get deepgramApiKey => text().withDefault(const Constant('823ee18611e5be6ce4a31f8a162ffd4f9a27845b'))();
+  TextColumn get openaiModel => text().withDefault(const Constant(''))();
+
+  // Speech-to-text API - empty default, let backend use .env values
+  TextColumn get deepgramApiKey => text().withDefault(const Constant(''))();
   BoolColumn get encryptionEnabled => boolean().withDefault(const Constant(false))();
   IntColumn get syncInterval => integer().withDefault(const Constant(1800))();
   BoolColumn get syncOnNetwork => boolean().withDefault(const Constant(true))();
@@ -81,7 +85,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase() : super(_openConnection());
 
   @override
-  int get schemaVersion => 4;
+  int get schemaVersion => 5;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -143,13 +147,25 @@ class AppDatabase extends _$AppDatabase {
             await m.addColumn(userPreferences, userPreferences.autoProcessVoice);
           }
 
-          // Version 3 -> 4: Update API configurations to match backend .env
+          // Version 3 -> 4: Clear API configurations to use backend .env defaults
           if (from < 4) {
             await customStatement('''
               UPDATE user_preferences
-              SET openai_base_url = 'https://cnapi.kksj.org/v1',
-                  openai_model = 'gpt-4o-mini',
-                  deepgram_api_key = '823ee18611e5be6ce4a31f8a162ffd4f9a27845b'
+              SET openai_base_url = '',
+                  openai_model = '',
+                  deepgram_api_key = ''
+              WHERE id = 1
+            ''');
+          }
+
+          // Version 4 -> 5: Clear hardcoded API configs to prevent overriding backend .env
+          if (from < 5) {
+            await customStatement('''
+              UPDATE user_preferences
+              SET openai_base_url = '',
+                  openai_api_key = NULL,
+                  openai_model = '',
+                  deepgram_api_key = ''
               WHERE id = 1
             ''');
           }

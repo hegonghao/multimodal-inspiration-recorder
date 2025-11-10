@@ -131,6 +131,7 @@ class _SettingsPageState extends State<SettingsPage> {
         final updateData = <String, dynamic>{};
 
         // Only include non-empty values
+        // IMPORTANT: Empty values won't be sent to backend, so backend .env defaults won't be overridden
         final notionToken = _notionTokenController.text.trim();
         if (notionToken.isNotEmpty) {
           updateData['notion_token'] = notionToken;
@@ -141,6 +142,8 @@ class _SettingsPageState extends State<SettingsPage> {
           updateData['notion_database_id'] = notionDatabaseId;
         }
 
+        // NOTE: LLM and STT configs are managed by backend .env
+        // Mobile app should NOT override these unless explicitly provided
         final openaiApiKey = _openaiApiKeyController.text.trim();
         if (openaiApiKey.isNotEmpty) {
           updateData['openai_api_key'] = openaiApiKey;
