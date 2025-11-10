@@ -113,11 +113,16 @@ class _SettingsPageState extends State<SettingsPage> {
         ),
       );
 
-      // 2. Save Backend URL to StorageService
+      // 2. Save Backend URL to StorageService and update ApiService immediately
       final backendUrl = _backendUrlController.text.trim();
       if (backendUrl.isNotEmpty) {
         final storageService = await StorageService.getInstance();
         await storageService.setString(StorageService.keyApiBaseUrl, backendUrl);
+
+        // Update ApiService baseUrl immediately without restarting app
+        final apiService = Provider.of<ApiService>(context, listen: false);
+        apiService.updateBaseUrl(backendUrl);
+        debugPrint('Backend URL updated to: $backendUrl');
       }
 
       // 3. Sync to backend API
@@ -243,7 +248,7 @@ class _SettingsPageState extends State<SettingsPage> {
             ),
             const SizedBox(height: 4),
             const Text(
-              '配置后端服务器地址（重启App后生效）',
+              '配置后端服务器地址(保存后立即生效)',
               style: TextStyle(color: AppColors.textSecondary, fontSize: 12),
             ),
             const SizedBox(height: 16),
@@ -262,16 +267,16 @@ class _SettingsPageState extends State<SettingsPage> {
             Container(
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
-                color: AppColors.warning.withOpacity(0.1),
+                color: AppColors.success.withOpacity(0.1),
                 borderRadius: BorderRadius.circular(8),
               ),
               child: const Row(
                 children: [
-                  Icon(Icons.info_outline_rounded, size: 16, color: AppColors.warning),
+                  Icon(Icons.info_outline_rounded, size: 16, color: AppColors.success),
                   SizedBox(width: 8),
                   Expanded(
                     child: Text(
-                      '修改后需要重启App才能生效。确保地址格式正确：http://IP:端口',
+                      '保存后立即生效,无需重启。确保地址格式正确：http://IP:端口',
                       style: TextStyle(fontSize: 11, color: AppColors.textSecondary),
                     ),
                   ),

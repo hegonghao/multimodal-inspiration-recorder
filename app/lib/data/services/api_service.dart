@@ -30,6 +30,16 @@ class ApiService {
   final Dio _dio;
   final Logger _logger = Logger();
 
+  /// Update the base URL dynamically
+  /// This allows changing the backend server without restarting the app
+  void updateBaseUrl(String newBaseUrl) {
+    _dio.options.baseUrl = newBaseUrl;
+    _logger.i('API Service base URL updated to: $newBaseUrl');
+  }
+
+  /// Get current base URL
+  String get baseUrl => _dio.options.baseUrl;
+
   void _setupInterceptors() {
     // Request interceptor
     _dio.interceptors.add(
