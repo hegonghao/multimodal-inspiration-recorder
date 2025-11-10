@@ -47,7 +47,7 @@ void main() {
       when(mockAudioService.durationStream)
           .thenAnswer((_) => Stream.value(Duration.zero));
       when(mockAudioService.amplitudeStream)
-          .thenAnswer((_) => Stream.value(0.0));
+          .thenAnswer((_) => Stream.value(0));
 
       // Create provider with mocks
       provider = InspirationProvider(
@@ -74,7 +74,7 @@ void main() {
       );
     }
 
-    testWidgets('renders correctly with initial state', (WidgetTester tester) async {
+    testWidgets('renders correctly with initial state', (tester) async {
       // Arrange
       await tester.pumpWidget(createTestWidget(const VoiceRecorderWidget()));
 
@@ -86,7 +86,7 @@ void main() {
     });
 
     testWidgets('shows recording state when recording starts',
-        (WidgetTester tester) async {
+        (tester) async {
       // Arrange
       await tester.pumpWidget(createTestWidget(const VoiceRecorderWidget()));
 
@@ -109,7 +109,7 @@ void main() {
       expect(find.byIcon(Icons.stop), findsOneWidget);
     });
 
-    testWidgets('displays duration during recording', (WidgetTester tester) async {
+    testWidgets('displays duration during recording', (tester) async {
       // Arrange
       when(mockAudioService.isRecording).thenReturn(true);
       when(mockAudioService.durationStream).thenAnswer(
@@ -124,7 +124,7 @@ void main() {
     });
 
     testWidgets('displays remaining time during recording',
-        (WidgetTester tester) async {
+        (tester) async {
       // Arrange
       when(mockAudioService.isRecording).thenReturn(true);
       when(mockAudioService.getRemainingSeconds()).thenReturn(270); // 4:30 left
@@ -138,7 +138,7 @@ void main() {
     });
 
     testWidgets('shows warning when time is running out',
-        (WidgetTester tester) async {
+        (tester) async {
       // Arrange
       when(mockAudioService.isRecording).thenReturn(true);
       when(mockAudioService.getRemainingSeconds()).thenReturn(25); // 25 seconds left
@@ -154,7 +154,7 @@ void main() {
     });
 
     testWidgets('shows amplitude visualization when recording',
-        (WidgetTester tester) async {
+        (tester) async {
       // Arrange
       when(mockAudioService.isRecording).thenReturn(true);
       when(mockAudioService.amplitudeStream)
@@ -169,7 +169,7 @@ void main() {
     });
 
     testWidgets('shows control buttons when recording',
-        (WidgetTester tester) async {
+        (tester) async {
       // Arrange
       when(mockAudioService.isRecording).thenReturn(true);
 
@@ -181,7 +181,7 @@ void main() {
       expect(find.text('暂停'), findsOneWidget);
     });
 
-    testWidgets('pause button works correctly', (WidgetTester tester) async {
+    testWidgets('pause button works correctly', (tester) async {
       // Arrange
       when(mockAudioService.isRecording).thenReturn(true);
       when(mockAudioService.isPaused).thenReturn(false);
@@ -198,7 +198,7 @@ void main() {
       verify(mockAudioService.pauseRecording()).called(1);
     });
 
-    testWidgets('resume button appears when paused', (WidgetTester tester) async {
+    testWidgets('resume button appears when paused', (tester) async {
       // Arrange
       when(mockAudioService.isRecording).thenReturn(true);
       when(mockAudioService.isPaused).thenReturn(true);
@@ -212,10 +212,12 @@ void main() {
     });
 
     testWidgets('cancel button shows confirmation dialog',
-        (WidgetTester tester) async {
+        (tester) async {
       // Arrange
       when(mockAudioService.isRecording).thenReturn(true);
-      when(mockAudioService.cancelRecording()).thenAnswer((_) async {});
+      when(mockAudioService.cancelRecording()).thenAnswer((_) async {
+        return null;
+      });
 
       await tester.pumpWidget(createTestWidget(const VoiceRecorderWidget()));
       await tester.pump();
@@ -228,7 +230,7 @@ void main() {
       verify(mockAudioService.cancelRecording()).called(1);
     });
 
-    testWidgets('stop button calls stopRecording', (WidgetTester tester) async {
+    testWidgets('stop button calls stopRecording', (tester) async {
       // Arrange
       when(mockAudioService.isRecording).thenReturn(true);
       when(mockAudioService.stopRecording()).thenAnswer(
@@ -250,7 +252,7 @@ void main() {
     });
 
     testWidgets('calls onRecordingComplete callback when recording stops',
-        (WidgetTester tester) async {
+        (tester) async {
       // Arrange
       bool callbackCalled = false;
       when(mockAudioService.isRecording).thenReturn(false);
@@ -274,11 +276,13 @@ void main() {
     });
 
     testWidgets('calls onRecordingCancelled callback when cancelled',
-        (WidgetTester tester) async {
+        (tester) async {
       // Arrange
       bool callbackCalled = false;
       when(mockAudioService.isRecording).thenReturn(true);
-      when(mockAudioService.cancelRecording()).thenAnswer((_) async {});
+      when(mockAudioService.cancelRecording()).thenAnswer((_) async {
+        return null;
+      });
 
       await tester.pumpWidget(
         createTestWidget(
@@ -300,7 +304,7 @@ void main() {
     });
 
     testWidgets('microphone button changes color when recording',
-        (WidgetTester tester) async {
+        (tester) async {
       // Arrange
       when(mockAudioService.isRecording).thenReturn(false);
 
@@ -338,7 +342,7 @@ void main() {
       );
     });
 
-    testWidgets('compact button renders correctly', (WidgetTester tester) async {
+    testWidgets('compact button renders correctly', (tester) async {
       // Arrange & Act
       await tester.pumpWidget(
         MaterialApp(
@@ -355,7 +359,7 @@ void main() {
       expect(find.byIcon(Icons.mic), findsOneWidget);
     });
 
-    testWidgets('compact button calls onPressed', (WidgetTester tester) async {
+    testWidgets('compact button calls onPressed', (tester) async {
       // Arrange
       bool pressed = false;
 
@@ -380,7 +384,7 @@ void main() {
     });
 
     testWidgets('shows error dialog when recording fails',
-        (WidgetTester tester) async {
+        (tester) async {
       // Arrange
       when(mockAudioService.startRecording()).thenAnswer(
         (_) async => RecordingResult.error('Microphone permission denied'),

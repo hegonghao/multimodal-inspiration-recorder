@@ -6,6 +6,10 @@ import 'package:flutter/foundation.dart';
 /// Service for monitoring network connectivity status
 /// Provides real-time network status updates for sync operations
 class ConnectivityService extends ChangeNotifier {
+
+  ConnectivityService() {
+    _initConnectivity();
+  }
   final Connectivity _connectivity = Connectivity();
   StreamSubscription<List<ConnectivityResult>>? _subscription;
 
@@ -13,10 +17,6 @@ class ConnectivityService extends ChangeNotifier {
   ConnectivityResult _currentConnection = ConnectivityResult.none;
   DateTime? _lastConnectedAt;
   DateTime? _lastDisconnectedAt;
-
-  ConnectivityService() {
-    _initConnectivity();
-  }
 
   // ==================== Getters ====================
 

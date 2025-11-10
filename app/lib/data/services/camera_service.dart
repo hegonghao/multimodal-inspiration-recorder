@@ -341,7 +341,7 @@ class CameraService {
       final thumbnailFile = File(thumbnailPath);
       await thumbnailFile.writeAsBytes(img.encodeJpg(thumbnail, quality: 85));
 
-      _logger.i('Thumbnail created: $thumbnailPath (${size}x${size})');
+      _logger.i('Thumbnail created: $thumbnailPath (${size}x$size)');
       return thumbnailFile;
 
     } catch (e) {
@@ -373,11 +373,6 @@ class CameraService {
 
 /// Result of an image operation
 class ImageResult {
-  final bool success;
-  final File? file;
-  final String? error;
-  final int? fileSize;
-  final bool cancelled;
 
   ImageResult._({
     required this.success,
@@ -408,6 +403,11 @@ class ImageResult {
       cancelled: true,
     );
   }
+  final bool success;
+  final File? file;
+  final String? error;
+  final int? fileSize;
+  final bool cancelled;
 
   @override
   String toString() {
@@ -423,10 +423,6 @@ class ImageResult {
 
 /// Result of multiple image selection
 class MultiImageResult {
-  final bool success;
-  final List<File>? files;
-  final String? error;
-  final bool cancelled;
 
   MultiImageResult._({
     required this.success,
@@ -455,17 +451,21 @@ class MultiImageResult {
       cancelled: true,
     );
   }
+  final bool success;
+  final List<File>? files;
+  final String? error;
+  final bool cancelled;
 }
 
 /// Image dimensions
 class ImageDimensions {
-  final int width;
-  final int height;
 
   ImageDimensions({
     required this.width,
     required this.height,
   });
+  final int width;
+  final int height;
 
   double get aspectRatio => width / height;
 
