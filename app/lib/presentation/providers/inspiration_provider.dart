@@ -158,6 +158,8 @@ class InspirationProvider with ChangeNotifier {
         title: 'Voice Recording',
         content: '',
         audioFile: audioFile,
+        language: language,
+        autoProcess: autoProcess,
       );
 
       // Save to local database

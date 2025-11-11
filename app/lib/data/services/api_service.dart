@@ -158,12 +158,16 @@ class ApiService {
     required String title,
     required String content,
     required File audioFile,
+    String language = 'auto',  // Support 'auto', 'zh', 'en'
+    bool autoProcess = true,
   }) async {
     try {
       final formData = FormData.fromMap({
         'title': title,
         'content': content,
         'input_type': 'voice',
+        'language': language,
+        'auto_process': autoProcess,
         'file': await MultipartFile.fromFile(
           audioFile.path,
           filename: audioFile.path.split('/').last,
