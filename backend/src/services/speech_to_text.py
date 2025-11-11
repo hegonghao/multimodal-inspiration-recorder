@@ -87,6 +87,13 @@ class SpeechToTextService:
             with open(audio_file_path, "rb") as audio:
                 buffer_data = audio.read()
 
+            # Log file size for debugging
+            file_size = len(buffer_data)
+            logger.info(f"Read audio file: {file_size} bytes from {audio_file_path}")
+
+            if file_size == 0:
+                raise ValueError(f"Audio file is empty (0 bytes): {audio_file_path}")
+
             # Build API URL with query parameters
             params = {
                 "model": "nova-2",
