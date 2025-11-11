@@ -308,6 +308,7 @@ async def create_record_with_file(
 
             with tempfile.NamedTemporaryFile(delete=False, suffix=file_ext) as temp_file:
                 temp_file.write(file_content)
+                temp_file.flush()  # CRITICAL: Flush to ensure data is written to disk
                 temp_file_path = temp_file.name
 
             # Log file information for debugging
