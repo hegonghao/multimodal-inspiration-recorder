@@ -11,7 +11,7 @@ services:
     container_name: inspiration-recorder-backend
     restart: unless-stopped
     env_file:
-      - .env
+      - backend/.env
     ports:
       - "8000:8000"
     environment:
@@ -93,7 +93,7 @@ services:
     container_name: inspiration-recorder-worker
     restart: unless-stopped
     env_file:
-      - .env
+      - backend/.env
     command: python -m arq src.app.worker.WorkerSettingsClass
     environment:
       # Application
