@@ -352,14 +352,21 @@ async def create_record_with_file(
                 speech_service = get_speech_service(api_key=user_prefs.deepgram_api_key)
 
                 try:
-                    # Always enable language detection for better multilingual support
-                    # This allows the API to handle Chinese, English, and mixed input
-                    # IMPORTANT: Do NOT pass language parameter when detect_language=True
-                    # as language parameter takes precedence and disables detection
+                    # Use user's language preference
+                    # If language is 'auto', enable auto-detection
+                    # If language is specified (zh/en), use it directly
+                    use_auto_detect = language == "auto"
+                    language_param = None if use_auto_detect else language
+
+                    logger.info(
+                        f"Transcription settings: language='{language}', "
+                        f"auto_detect={use_auto_detect}, language_param={language_param}"
+                    )
+
                     transcription_result = await speech_service.transcribe_audio_file(
                         temp_file_path,
-                        language=None,  # Let Deepgram auto-detect the language
-                        detect_language=True  # Always detect language for best results
+                        language=language_param,  # Use specified language or None for auto-detect
+                        detect_language=use_auto_detect  # Enable detection only when language is 'auto'
                     )
                 except Exception as trans_error:
                     logger.error(f"Transcription service failed: {trans_error}")
