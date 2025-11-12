@@ -821,10 +821,11 @@ async def delete_record(
     db: AsyncSession = Depends(get_db),
 ):
     """
-    Delete an inspiration record
+    Delete an inspiration record from the local database
 
-    This performs a hard delete. The record and associated sync tasks
-    will be permanently removed from the database.
+    This performs a hard delete of the record from the backend database.
+    Note: This does NOT delete the corresponding Notion page (if any).
+    The Notion page will remain intact even after local record deletion.
     """
     try:
         # Fetch existing record
@@ -839,29 +840,15 @@ async def delete_record(
                 detail=f"Record with ID {record_id} not found"
             )
 
-        # If record has a Notion page ID, create archive task
-        if existing_record.notion_page_id:
-            sync_task = SyncQueue(
-                record_id=record_id,
-                operation=SyncOperation.DELETE,
-                status=0,  # PENDING
-                retry_count=0,
-                max_retries=5,
-                priority=1,  # HIGH priority for deletions
-            )
-            db.add(sync_task)
-            await db.commit()
+        # Always delete the database record immediately
+        # User wants to delete local history, NOT Notion data
+        await db.delete(existing_record)
+        await db.commit()
 
-            logger.info(
-                f"Created delete sync task for record {record_id} "
-                f"(notion_page_id={existing_record.notion_page_id})"
-            )
-        else:
-            # No Notion sync needed, delete immediately
-            await db.delete(existing_record)
-            await db.commit()
-
-            logger.info(f"Record deleted immediately: id={record_id}")
+        logger.info(
+            f"Record deleted from database: id={record_id}, "
+            f"notion_page_id={existing_record.notion_page_id or 'None'}"
+        )
 
         return None
 
