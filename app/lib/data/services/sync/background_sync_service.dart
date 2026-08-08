@@ -6,6 +6,8 @@ import 'package:workmanager/workmanager.dart';
 import '../../database.dart';
 import '../../repositories/inspiration_repository.dart';
 import '../api_service.dart';
+import '../storage_service.dart';
+import '../../../core/constants.dart';
 import 'connectivity_service.dart';
 import 'sync_service.dart';
 
@@ -175,8 +177,15 @@ void callbackDispatcher() {
         return Future.value(false);
       }
 
+      // Background isolates must use the same endpoint configured in the app.
+      // localhost points to the phone/emulator itself in production deployments.
+      final storageService = await StorageService.getInstance();
       final apiService = ApiService(
-        baseUrl: 'http://localhost:8000', // Default backend URL
+        baseUrl: storageService.getString(
+              StorageService.keyApiBaseUrl,
+              defaultValue: ApiConstants.defaultBaseUrl,
+            ) ??
+            ApiConstants.defaultBaseUrl,
       );
 
       // Create sync service

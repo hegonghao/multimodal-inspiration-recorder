@@ -9,6 +9,11 @@ from pathlib import Path
 from typing import Dict, List, Tuple
 from datetime import datetime, timezone
 
+
+for _stream in (sys.stdout, sys.stderr):
+    if hasattr(_stream, "reconfigure"):
+        _stream.reconfigure(encoding="utf-8")
+
 # Add backend src to path
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
@@ -56,7 +61,7 @@ def check_environment_variables() -> Tuple[bool, List[str]]:
     optional_vars = [
         "OPENAI_API_KEY",
         "DEEPGRAM_API_KEY",
-        "NOTION_API_KEY",
+        "NOTION_TOKEN",
         "NOTION_DATABASE_ID",
         "SENTRY_DSN",
     ]
@@ -91,11 +96,7 @@ def check_configuration_files() -> Tuple[bool, List[str]]:
         "alembic.ini",
     ]
 
-    optional_files = [
-        ".env.production",
-        "docker-compose.yml",
-        "Dockerfile",
-    ]
+    optional_files = [".env.production", "Dockerfile"]
 
     issues = []
     warnings = []
@@ -111,6 +112,10 @@ def check_configuration_files() -> Tuple[bool, List[str]]:
         file_path = backend_root / file
         if not file_path.exists():
             warnings.append(f"Optional file not found: {file}")
+
+    # Compose lives at the repository root, not inside backend/.
+    if not (backend_root.parent / "docker-compose.yml").exists():
+        warnings.append("Optional file not found: ../docker-compose.yml")
 
     return len(issues) == 0, issues + [f"⚠️ {w}" for w in warnings]
 
@@ -174,9 +179,13 @@ def check_security_configuration() -> Tuple[bool, List[str]]:
         issues.append("DEBUG mode is enabled - MUST be False in production")
 
     # Check CORS settings
-    cors_origins = os.getenv("CORS_ORIGINS", "")
+    cors_origins = os.getenv("ALLOWED_ORIGINS") or os.getenv("CORS_ORIGINS", "")
     if "*" in cors_origins:
-        warnings.append("CORS_ORIGINS includes '*' - restrict to specific domains")
+        issues.append("ALLOWED_ORIGINS includes '*' - restrict to specific domains")
+
+    allowed_hosts = os.getenv("ALLOWED_HOSTS", "")
+    if "*" in allowed_hosts:
+        issues.append("ALLOWED_HOSTS includes '*' - restrict to the public hostnames")
 
     # Check HTTPS enforcement
     # Note: This should be checked at deployment/infrastructure level

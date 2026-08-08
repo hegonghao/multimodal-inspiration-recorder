@@ -93,7 +93,10 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
 
     async def dispatch(self, request: Request, call_next: Callable):
         # 跳过健康检查端点
-        if request.url.path in ["/health", "/", "/docs", "/redoc", "/openapi.json"]:
+        if (
+            request.url.path in ["/health", "/", "/docs", "/redoc", "/openapi.json"]
+            or request.url.path.startswith("/api/v1/health")
+        ):
             return await call_next(request)
 
         # 获取客户端标识（IP地址）
@@ -186,9 +189,14 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         response.headers["X-Content-Type-Options"] = "nosniff"
         response.headers["X-Frame-Options"] = "DENY"
         response.headers["X-XSS-Protection"] = "1; mode=block"
-        response.headers[
-            "Strict-Transport-Security"
-        ] = "max-age=31536000; includeSubDomains"
+        # HSTS is only valid when the public endpoint is HTTPS. Set it at the
+        # TLS-terminating proxy or enable it for the production API only.
+        import os
+
+        if os.getenv("ENVIRONMENT", "development") == "production":
+            response.headers[
+                "Strict-Transport-Security"
+            ] = "max-age=31536000; includeSubDomains"
         response.headers["Content-Security-Policy"] = "default-src 'self'"
 
         # 移除可能泄露服务器信息的头

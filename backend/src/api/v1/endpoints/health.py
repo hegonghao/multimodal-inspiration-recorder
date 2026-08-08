@@ -206,7 +206,7 @@ async def detailed_health(
             "api_keys_configured": {
                 "openai": bool(settings.OPENAI_API_KEY),
                 "deepgram": bool(settings.DEEPGRAM_API_KEY),
-                "notion": bool(settings.NOTION_API_KEY),
+                "notion": bool(settings.NOTION_TOKEN or settings.NOTION_API_KEY),
             },
         }
     except Exception as e:
@@ -220,7 +220,11 @@ async def detailed_health(
     try:
         import redis.asyncio as aioredis
 
-        redis_client = aioredis.from_url(settings.REDIS_URL, decode_responses=True)
+        redis_client = aioredis.from_url(
+            settings.REDIS_URL,
+            password=settings.REDIS_PASSWORD,
+            decode_responses=True,
+        )
         await redis_client.ping()
 
         info = await redis_client.info()

@@ -259,7 +259,7 @@ class _SettingsPageState extends State<SettingsPage> {
               controller: _backendUrlController,
               decoration: const InputDecoration(
                 labelText: 'Backend URL',
-                hintText: 'http://192.168.13.222:8000',
+                hintText: 'https://api.example.com',
                 prefixIcon: Icon(Icons.dns_rounded),
                 border: OutlineInputBorder(),
                 helperText: '手机和电脑需在同一WiFi网络',

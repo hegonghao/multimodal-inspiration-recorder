@@ -14,13 +14,12 @@ class AppConstants {
 class ApiConstants {
   ApiConstants._();
 
-  // 根据运行环境选择后端地址:
-  // - Android模拟器: 使用 10.0.2.2 (指向宿主机localhost)
-  // - 真机/iOS: 使用电脑局域网IP 192.168.13.222
-  // - 桌面开发: 使用 localhost
-  // static const String defaultBaseUrl = 'http://10.0.2.2:8000'; // Android模拟器
-  static const String defaultBaseUrl = 'http://192.168.13.222:8000'; // 真机
-  // static const String defaultBaseUrl = 'http://localhost:8000'; // 桌面
+  // Set the deployment endpoint at build time, for example:
+  // flutter build apk --dart-define=API_BASE_URL=https://api.example.com
+  static const String defaultBaseUrl = String.fromEnvironment(
+    'API_BASE_URL',
+    defaultValue: 'http://localhost:8000',
+  );
 
   static const String apiVersion = 'v1';
   static const int connectionTimeout = 60000; // 60 seconds (for LLM processing)

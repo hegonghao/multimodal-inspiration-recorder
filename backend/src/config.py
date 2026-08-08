@@ -4,9 +4,10 @@ Configuration Management
 """
 
 import os
+import json
 from typing import List, Optional, Union
 from pydantic_settings import BaseSettings, SettingsConfigDict
-from pydantic import field_validator
+from pydantic import field_validator, model_validator
 from functools import lru_cache
 
 
@@ -70,6 +71,9 @@ class Settings(BaseSettings):
     METRICS_ENABLED: bool = True
     SENTRY_DSN: Optional[str] = None
 
+    # Legacy compatibility alias. The canonical setting is ALLOWED_ORIGINS.
+    CORS_ORIGINS: Optional[str] = None
+
     # Notion Integration
     # Note: .env uses NOTION_TOKEN, config uses NOTION_API_KEY (for consistency with OpenAI)
     # Both are accepted, NOTION_TOKEN takes precedence
@@ -106,6 +110,8 @@ class Settings(BaseSettings):
     @classmethod
     def parse_allowed_origins(cls, v: Union[str, List[str]]) -> List[str]:
         if isinstance(v, str):
+            if v.strip().startswith("["):
+                return json.loads(v)
             return [origin.strip() for origin in v.split(",")]
         return v
 
@@ -113,13 +119,31 @@ class Settings(BaseSettings):
     @classmethod
     def parse_allowed_hosts(cls, v: Union[str, List[str]]) -> List[str]:
         if isinstance(v, str):
+            if v.strip().startswith("["):
+                return json.loads(v)
             return [host.strip() for host in v.split(",")]
         return v
+
+    @model_validator(mode="after")
+    def validate_production_security(self) -> "Settings":
+        """Fail fast when a production container is started insecurely."""
+        if self.ENVIRONMENT == "production":
+            if self.DEBUG:
+                raise ValueError("DEBUG must be false in production")
+            if len(self.SECRET_KEY) < 32 or self.SECRET_KEY.startswith("dev-"):
+                raise ValueError("SECRET_KEY must be a random value of at least 32 characters")
+            if "*" in self.ALLOWED_HOSTS:
+                raise ValueError("ALLOWED_HOSTS must be restricted in production")
+            if "*" in self.ALLOWED_ORIGINS:
+                raise ValueError("ALLOWED_ORIGINS must be restricted in production")
+        return self
 
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",
         case_sensitive=True,
+        enable_decoding=False,
+        extra="ignore",
     )
 
 

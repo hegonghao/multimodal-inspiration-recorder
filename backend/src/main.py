@@ -12,10 +12,11 @@ import time
 import logging
 
 from src.core.events import startup_handler, shutdown_handler
-from src.core.middleware import (
+from src.api.middleware.security import (
     RequestLoggingMiddleware,
     RateLimitMiddleware,
-    SecurityHeadersMiddleware
+    RequestSizeLimitMiddleware,
+    SecurityHeadersMiddleware,
 )
 from src.core.exceptions import setup_exception_handlers
 from src.api.v1.api import api_router
@@ -72,6 +73,7 @@ def create_application() -> FastAPI:
 
     # Custom middleware
     app.add_middleware(SecurityHeadersMiddleware)
+    app.add_middleware(RequestSizeLimitMiddleware, max_request_size=50 * 1024 * 1024)
     app.add_middleware(RateLimitMiddleware)
     app.add_middleware(RequestLoggingMiddleware)
 
