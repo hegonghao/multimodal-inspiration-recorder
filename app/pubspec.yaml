@@ -1,7 +1,7 @@
 name: multimodal_inspiration_recorder
 description: 多模输入灵感记录器 - 支持语音、图片、文字的灵感捕捉应用
 publish_to: 'none'
-version: 1.0.0+1
+version: 1.0.1+2
 
 environment:
   sdk: '>=3.0.0 <4.0.0'
@@ -54,6 +54,7 @@ dependencies:
   # File Handling
   file_picker: ^10.0.0
   open_filex: ^4.3.4
+  package_info_plus: ^8.3.0
 
   # Date & Time
   intl: ^0.18.1

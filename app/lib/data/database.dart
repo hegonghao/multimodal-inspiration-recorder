@@ -19,7 +19,8 @@ class InspirationRecords extends Table {
   TextColumn get inputType => text().withLength(min: 1, max: 20)();
   TextColumn get categoryTags => text().nullable()();
   TextColumn get summary => text().nullable()();
-  TextColumn get notionPageId => text().withLength(max: 100).nullable().unique()();
+  TextColumn get notionPageId =>
+      text().withLength(max: 100).nullable().unique()();
   IntColumn get syncStatus => integer().withDefault(const Constant(0))();
   DateTimeColumn get createdAt => dateTime().withDefault(currentDateAndTime)();
   DateTimeColumn get updatedAt => dateTime().withDefault(currentDateAndTime)();
@@ -27,7 +28,8 @@ class InspirationRecords extends Table {
   TextColumn get audioFilePath => text().nullable()();
   TextColumn get imageFilePath => text().nullable()();
   RealColumn get ocrConfidence => real().nullable()();
-  IntColumn get aiProcessingStatus => integer().withDefault(const Constant(0))();
+  IntColumn get aiProcessingStatus =>
+      integer().withDefault(const Constant(0))();
   TextColumn get aiErrorMessage => text().nullable()();
 }
 
@@ -35,7 +37,8 @@ class InspirationRecords extends Table {
 /// Manages background synchronization tasks with retry logic
 class SyncQueue extends Table {
   IntColumn get id => integer().autoIncrement()();
-  IntColumn get recordId => integer().references(InspirationRecords, #id, onDelete: KeyAction.cascade)();
+  IntColumn get recordId => integer()
+      .references(InspirationRecords, #id, onDelete: KeyAction.cascade)();
   TextColumn get operation => text().withLength(max: 20)();
   IntColumn get status => integer().withDefault(const Constant(0))();
   IntColumn get retryCount => integer().withDefault(const Constant(0))();
@@ -62,16 +65,20 @@ class UserPreferences extends Table {
 
   // Speech-to-text API - empty default, let backend use .env values
   TextColumn get deepgramApiKey => text().withDefault(const Constant(''))();
-  BoolColumn get encryptionEnabled => boolean().withDefault(const Constant(false))();
+  BoolColumn get encryptionEnabled =>
+      boolean().withDefault(const Constant(false))();
   IntColumn get syncInterval => integer().withDefault(const Constant(1800))();
   BoolColumn get syncOnNetwork => boolean().withDefault(const Constant(true))();
   TextColumn get uiLanguage => text().withDefault(const Constant('zh_CN'))();
   TextColumn get themeMode => text().withDefault(const Constant('system'))();
-  IntColumn get maxVoiceDuration => integer().withDefault(const Constant(300))();
+  IntColumn get maxVoiceDuration =>
+      integer().withDefault(const Constant(300))();
   BoolColumn get autoClassify => boolean().withDefault(const Constant(true))();
   BoolColumn get autoSummarize => boolean().withDefault(const Constant(true))();
-  TextColumn get voiceInputLanguage => text().withDefault(const Constant('auto'))(); // 'auto', 'zh', 'en'
-  BoolColumn get autoProcessVoice => boolean().withDefault(const Constant(true))(); // Auto AI processing for voice input
+  TextColumn get voiceInputLanguage =>
+      text().withDefault(const Constant('auto'))(); // 'auto', 'zh', 'en'
+  BoolColumn get autoProcessVoice => boolean().withDefault(
+      const Constant(true))(); // Auto AI processing for voice input
   DateTimeColumn get updatedAt => dateTime().withDefault(currentDateAndTime)();
 
   @override
@@ -143,8 +150,10 @@ class AppDatabase extends _$AppDatabase {
 
           // Version 2 -> 3: Add voice input settings
           if (from < 3) {
-            await m.addColumn(userPreferences, userPreferences.voiceInputLanguage);
-            await m.addColumn(userPreferences, userPreferences.autoProcessVoice);
+            await m.addColumn(
+                userPreferences, userPreferences.voiceInputLanguage);
+            await m.addColumn(
+                userPreferences, userPreferences.autoProcessVoice);
           }
 
           // Version 3 -> 4: Clear API configurations to use backend .env defaults
@@ -187,7 +196,8 @@ class AppDatabase extends _$AppDatabase {
     String? inputType,
     int? syncStatus,
   }) async {
-    final query = select(inspirationRecords)..orderBy([(t) => OrderingTerm.desc(t.createdAt)]);
+    final query = select(inspirationRecords)
+      ..orderBy([(t) => OrderingTerm.desc(t.createdAt)]);
 
     if (inputType != null) {
       query.where((t) => t.inputType.equals(inputType));
@@ -205,11 +215,13 @@ class AppDatabase extends _$AppDatabase {
   }
 
   Future<InspirationRecord?> getRecordById(int id) async {
-    return (select(inspirationRecords)..where((t) => t.id.equals(id))).getSingleOrNull();
+    return (select(inspirationRecords)..where((t) => t.id.equals(id)))
+        .getSingleOrNull();
   }
 
   Future<int> insertRecord(InspirationRecordsCompanion record) {
-    return into(inspirationRecords).insert(record, mode: InsertMode.insertOrReplace);
+    return into(inspirationRecords)
+        .insert(record, mode: InsertMode.insertOrReplace);
   }
 
   Future<bool> updateRecord(InspirationRecordsCompanion record) {
@@ -220,21 +232,36 @@ class AppDatabase extends _$AppDatabase {
     return (delete(inspirationRecords)..where((t) => t.id.equals(id))).go();
   }
 
+  /// Remove records that were deleted remotely after a complete server sync.
+  /// Only records with a Notion page are eligible; local unsynced drafts remain.
+  Future<int> deleteRemoteRecordsMissingFrom(Set<int> serverRecordIds) {
+    final query = delete(inspirationRecords)
+      ..where((t) => t.notionPageId.isNotNull());
+    if (serverRecordIds.isNotEmpty) {
+      query.where((t) => t.id.isNotIn(serverRecordIds.toList()));
+    }
+    return query.go();
+  }
+
   Future<int> getRecordCount() async {
-    final countQuery = selectOnly(inspirationRecords)..addColumns([inspirationRecords.id.count()]);
+    final countQuery = selectOnly(inspirationRecords)
+      ..addColumns([inspirationRecords.id.count()]);
     final result = await countQuery.getSingle();
     return result.read(inspirationRecords.id.count()) ?? 0;
   }
 
   // Batch operations for better performance
-  Future<void> batchInsertRecords(List<InspirationRecordsCompanion> records) async {
+  Future<void> batchInsertRecords(
+      List<InspirationRecordsCompanion> records) async {
     await batch((batch) {
-      batch.insertAll(inspirationRecords, records, mode: InsertMode.insertOrReplace);
+      batch.insertAll(inspirationRecords, records,
+          mode: InsertMode.insertOrReplace);
     });
   }
 
   // Storage management queries
-  Future<List<InspirationRecord>> getOldestSyncedRecords({required int limit}) async {
+  Future<List<InspirationRecord>> getOldestSyncedRecords(
+      {required int limit}) async {
     return (select(inspirationRecords)
           ..where((t) => t.syncStatus.equals(SyncStatus.synced.value))
           ..orderBy([(t) => OrderingTerm.asc(t.createdAt)])
@@ -242,9 +269,12 @@ class AppDatabase extends _$AppDatabase {
         .get();
   }
 
-  Future<List<InspirationRecord>> getOldestUnsyncedRecords({required int limit}) async {
+  Future<List<InspirationRecord>> getOldestUnsyncedRecords(
+      {required int limit}) async {
     return (select(inspirationRecords)
-          ..where((t) => t.syncStatus.equals(SyncStatus.pending.value) | t.syncStatus.equals(SyncStatus.failed.value))
+          ..where((t) =>
+              t.syncStatus.equals(SyncStatus.pending.value) |
+              t.syncStatus.equals(SyncStatus.failed.value))
           ..orderBy([(t) => OrderingTerm.asc(t.createdAt)])
           ..limit(limit))
         .get();
@@ -252,13 +282,21 @@ class AppDatabase extends _$AppDatabase {
 
   // SyncQueue queries
   Stream<List<SyncQueueData>> watchSyncQueue() {
-    return (select(syncQueue)..orderBy([(t) => OrderingTerm.asc(t.priority), (t) => OrderingTerm.asc(t.createdAt)])).watch();
+    return (select(syncQueue)
+          ..orderBy([
+            (t) => OrderingTerm.asc(t.priority),
+            (t) => OrderingTerm.asc(t.createdAt)
+          ]))
+        .watch();
   }
 
   Future<List<SyncQueueData>> getPendingSyncTasks() async {
     return (select(syncQueue)
           ..where((t) => t.status.equals(0) | t.status.equals(3))
-          ..orderBy([(t) => OrderingTerm.desc(t.priority), (t) => OrderingTerm.asc(t.createdAt)]))
+          ..orderBy([
+            (t) => OrderingTerm.desc(t.priority),
+            (t) => OrderingTerm.asc(t.createdAt)
+          ]))
         .get();
   }
 
@@ -275,7 +313,8 @@ class AppDatabase extends _$AppDatabase {
   }
 
   Future<int> getSyncQueueCount({int? status}) async {
-    final countQuery = selectOnly(syncQueue)..addColumns([syncQueue.id.count()]);
+    final countQuery = selectOnly(syncQueue)
+      ..addColumns([syncQueue.id.count()]);
 
     if (status != null) {
       countQuery.where(syncQueue.status.equals(status));
@@ -287,11 +326,13 @@ class AppDatabase extends _$AppDatabase {
 
   // UserPreferences queries
   Stream<UserPreference> watchPreferences() {
-    return (select(userPreferences)..where((t) => t.id.equals(1))).watchSingle();
+    return (select(userPreferences)..where((t) => t.id.equals(1)))
+        .watchSingle();
   }
 
   Future<UserPreference?> getPreferences() async {
-    return (select(userPreferences)..where((t) => t.id.equals(1))).getSingleOrNull();
+    return (select(userPreferences)..where((t) => t.id.equals(1)))
+        .getSingleOrNull();
   }
 
   Future<bool> updatePreferences(UserPreferencesCompanion preferences) {

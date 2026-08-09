@@ -9,7 +9,6 @@ import 'package:logger/logger.dart';
 /// Provides methods for interacting with the FastAPI backend,
 /// including error handling, retries, and request/response logging.
 class ApiService {
-
   ApiService({
     required String baseUrl,
     int connectTimeout = 30000,
@@ -153,12 +152,22 @@ class ApiService {
     }
   }
 
+  /// Get the latest mobile app build configured by the backend.
+  Future<Map<String, dynamic>> getMobileAppVersion() async {
+    try {
+      final response = await _dio.get('/api/v1/health/version');
+      return response.data as Map<String, dynamic>;
+    } on DioException catch (e) {
+      throw _handleError(e);
+    }
+  }
+
   /// Upload audio file with record
   Future<Map<String, dynamic>> uploadAudioRecord({
     required String title,
     required String content,
     required File audioFile,
-    String language = 'auto',  // Support 'auto', 'zh', 'en'
+    String language = 'auto', // Support 'auto', 'zh', 'en'
     bool autoProcess = true,
   }) async {
     try {
@@ -403,7 +412,8 @@ class ApiService {
   /// Test LLM connection
   Future<Map<String, dynamic>> testLLMConnection({
     required String openaiBaseUrl,
-    required String openaiModel, String? openaiApiKey,
+    required String openaiModel,
+    String? openaiApiKey,
   }) async {
     try {
       final response = await _dio.post(
@@ -467,12 +477,11 @@ class ApiService {
             // Nested error object (e.g., {error: "...", message: "..."})
             final nestedMessage = data!['message'] as Map<String, dynamic>;
             errorMessage = nestedMessage['message'] as String? ??
-                          nestedMessage['error'] as String? ??
-                          'Unknown error';
+                nestedMessage['error'] as String? ??
+                'Unknown error';
           } else {
-            errorMessage = statusCode >= 500
-                ? 'Server error occurred'
-                : 'Request failed';
+            errorMessage =
+                statusCode >= 500 ? 'Server error occurred' : 'Request failed';
           }
 
           if (statusCode >= 500) {
@@ -535,7 +544,6 @@ enum ApiExceptionType {
 }
 
 class ApiException implements Exception {
-
   ApiException(
     this.message, {
     required this.type,
@@ -548,5 +556,6 @@ class ApiException implements Exception {
   final dynamic data;
 
   @override
-  String toString() => 'ApiException: $message (type: $type, statusCode: $statusCode)';
+  String toString() =>
+      'ApiException: $message (type: $type, statusCode: $statusCode)';
 }

@@ -131,7 +131,6 @@ class InspirationProvider with ChangeNotifier {
       if (triggerSync) {
         Future.microtask(() => _syncWithBackend());
       }
-
     } catch (e) {
       _logger.e('Failed to load records: $e');
       _error = 'Failed to load records: $e';
@@ -173,7 +172,6 @@ class InspirationProvider with ChangeNotifier {
 
       _logger.i('Voice record created successfully');
       return true;
-
     } catch (e) {
       _logger.e('Failed to create voice record: $e');
       _error = 'Failed to create voice record: $e';
@@ -197,7 +195,8 @@ class InspirationProvider with ChangeNotifier {
       _logger.i('Creating image record: ${imageFile.path}');
 
       // Preprocess image for OCR
-      final processedImage = await _cameraService.preprocessImageForOCR(imageFile);
+      final processedImage =
+          await _cameraService.preprocessImageForOCR(imageFile);
 
       // Upload to API using uploadImageRecord method
       final response = await _apiService.uploadImageRecord(
@@ -217,7 +216,6 @@ class InspirationProvider with ChangeNotifier {
 
       _logger.i('Image record created successfully');
       return true;
-
     } catch (e) {
       _logger.e('Failed to create image record: $e');
       _error = 'Failed to create image record: $e';
@@ -238,7 +236,8 @@ class InspirationProvider with ChangeNotifier {
       _error = null;
       notifyListeners();
 
-      _logger.i('Creating text record: ${content.substring(0, content.length > 50 ? 50 : content.length)}...');
+      _logger.i(
+          'Creating text record: ${content.substring(0, content.length > 50 ? 50 : content.length)}...');
 
       // Use new API method that calls /upload endpoint with AI processing
       final response = await _apiService.createTextRecordWithAI(
@@ -258,7 +257,6 @@ class InspirationProvider with ChangeNotifier {
 
       _logger.i('Text record created successfully');
       return true;
-
     } catch (e) {
       _logger.e('Failed to create text record: $e');
       _error = 'Failed to create text record: $e';
@@ -273,7 +271,8 @@ class InspirationProvider with ChangeNotifier {
     try {
       // Prevent duplicate calls
       if (_isRecording) {
-        _logger.w('Recording already in progress, ignoring duplicate start call');
+        _logger
+            .w('Recording already in progress, ignoring duplicate start call');
         return true;
       }
 
@@ -295,7 +294,6 @@ class InspirationProvider with ChangeNotifier {
 
       _logger.i('Audio recording started successfully');
       return true;
-
     } catch (e) {
       _logger.e('Failed to start recording: $e');
       _isRecording = false;
@@ -331,7 +329,6 @@ class InspirationProvider with ChangeNotifier {
 
       _logger.i('Audio recording stopped successfully');
       return File(result.filePath!);
-
     } catch (e) {
       _logger.e('Failed to stop recording: $e');
       _error = 'Failed to stop recording: $e';
@@ -389,7 +386,6 @@ class InspirationProvider with ChangeNotifier {
       }
 
       return result.file;
-
     } catch (e) {
       _logger.e('Failed to take photo: $e');
       _error = 'Failed to take photo: $e';
@@ -414,7 +410,6 @@ class InspirationProvider with ChangeNotifier {
       }
 
       return result.file;
-
     } catch (e) {
       _logger.e('Failed to pick image: $e');
       _error = 'Failed to pick image: $e';
@@ -439,7 +434,6 @@ class InspirationProvider with ChangeNotifier {
 
       _logger.i('Record deleted successfully');
       return true;
-
     } catch (e) {
       _logger.e('Failed to delete record: $e');
       _error = 'Failed to delete record: $e';
@@ -480,7 +474,6 @@ class InspirationProvider with ChangeNotifier {
 
       _logger.i('Record updated successfully');
       return true;
-
     } catch (e) {
       _logger.e('Failed to update record: $e');
       _error = 'Failed to update record: $e';
@@ -508,6 +501,7 @@ class InspirationProvider with ChangeNotifier {
       int page = 1;
       int pageSize = 100; // Fetch 100 records per page
       List<Map<String, dynamic>> allBackendRecords = [];
+      var fetchCompleted = false;
 
       while (true) {
         try {
@@ -519,6 +513,7 @@ class InspirationProvider with ChangeNotifier {
 
           final data = response['data'] as List<dynamic>?;
           if (data == null || data.isEmpty) {
+            fetchCompleted = true;
             break; // No more records
           }
 
@@ -528,6 +523,7 @@ class InspirationProvider with ChangeNotifier {
           final hasNext = pagination?['has_next'] as bool? ?? false;
 
           if (!hasNext) {
+            fetchCompleted = true;
             break; // Last page reached
           }
 
@@ -547,7 +543,8 @@ class InspirationProvider with ChangeNotifier {
       for (final apiRecord in allBackendRecords) {
         try {
           // Check if record exists locally
-          final existingRecord = await _database.getRecordById(apiRecord['id'] as int);
+          final existingRecord =
+              await _database.getRecordById(apiRecord['id'] as int);
 
           if (existingRecord != null) {
             // Update existing record
@@ -557,7 +554,8 @@ class InspirationProvider with ChangeNotifier {
                 title: Value(apiRecord['title'] as String),
                 content: Value(apiRecord['content'] as String),
                 inputType: Value(apiRecord['input_type'] as String),
-                categoryTags: Value(_serializeCategoryTags(apiRecord['category_tags'])),
+                categoryTags:
+                    Value(_serializeCategoryTags(apiRecord['category_tags'])),
                 summary: Value(apiRecord['summary'] as String?),
                 notionPageId: Value(apiRecord['notion_page_id'] as String?),
                 syncStatus: Value(apiRecord['sync_status'] as int? ?? 0),
@@ -565,10 +563,13 @@ class InspirationProvider with ChangeNotifier {
                 audioFilePath: Value(apiRecord['audio_file_path'] as String?),
                 imageFilePath: Value(apiRecord['image_file_path'] as String?),
                 ocrConfidence: Value(apiRecord['ocr_confidence'] as double?),
-                aiProcessingStatus: Value(apiRecord['ai_processing_status'] as int? ?? 0),
+                aiProcessingStatus:
+                    Value(apiRecord['ai_processing_status'] as int? ?? 0),
                 aiErrorMessage: Value(apiRecord['ai_error_message'] as String?),
-                createdAt: Value(DateTime.parse(apiRecord['created_at'] as String)),
-                updatedAt: Value(DateTime.parse(apiRecord['updated_at'] as String)),
+                createdAt:
+                    Value(DateTime.parse(apiRecord['created_at'] as String)),
+                updatedAt:
+                    Value(DateTime.parse(apiRecord['updated_at'] as String)),
               ),
             );
           } else {
@@ -583,7 +584,27 @@ class InspirationProvider with ChangeNotifier {
         }
       }
 
-      _logger.i('Full sync completed: $updatedCount records synced, $errorCount errors');
+      // The backend is authoritative for records already linked to Notion.
+      // Do this only after every page was fetched successfully, otherwise a
+      // transient network error could make valid local records look deleted.
+      if (fetchCompleted) {
+        final serverRecordIds = allBackendRecords
+            .map((record) => record['id'])
+            .whereType<int>()
+            .toSet();
+        final removedCount = await _database.deleteRemoteRecordsMissingFrom(
+          serverRecordIds,
+        );
+        if (removedCount > 0) {
+          _logger.i('Removed $removedCount remotely deleted records locally');
+        }
+      } else {
+        _logger.w(
+            'Skipped remote deletion reconciliation because full fetch failed');
+      }
+
+      _logger.i(
+          'Full sync completed: $updatedCount records synced, $errorCount errors');
 
       // Reload records from local database
       await loadRecords(triggerSync: false);
@@ -592,7 +613,6 @@ class InspirationProvider with ChangeNotifier {
       notifyListeners();
 
       return true;
-
     } catch (e) {
       _logger.e('Full sync failed: $e');
       _error = 'Failed to sync from backend: $e';
@@ -617,7 +637,7 @@ class InspirationProvider with ChangeNotifier {
       for (final localRecord in localRecords) {
         try {
           // Poll for AI processing completion if needed
-          int maxAttempts = 15;  // Max 15 attempts * 500ms = 7.5 seconds
+          int maxAttempts = 15; // Max 15 attempts * 500ms = 7.5 seconds
           int attempt = 0;
           Map<String, dynamic>? response;
 
@@ -630,7 +650,8 @@ class InspirationProvider with ChangeNotifier {
             // AI processing states: 0=PENDING, 1=FAILED, 2=COMPLETED
             if (aiStatus == 2 || aiStatus == 1) {
               // AI processing completed or failed, stop polling
-              _logger.i('AI processing finished for record ${localRecord.id}: status=$aiStatus');
+              _logger.i(
+                  'AI processing finished for record ${localRecord.id}: status=$aiStatus');
               break;
             }
 
@@ -648,7 +669,8 @@ class InspirationProvider with ChangeNotifier {
 
           // Log warning if AI processing timed out
           if (attempt >= maxAttempts) {
-            _logger.w('AI processing timeout for record ${localRecord.id}, syncing current state');
+            _logger.w(
+                'AI processing timeout for record ${localRecord.id}, syncing current state');
           }
 
           // Update local database with latest sync status and other fields
@@ -656,9 +678,12 @@ class InspirationProvider with ChangeNotifier {
             InspirationRecordsCompanion(
               id: Value(localRecord.id),
               title: Value(response['title'] as String? ?? localRecord.title),
-              content: Value(response['content'] as String? ?? localRecord.content),
-              inputType: Value(response['input_type'] as String? ?? localRecord.inputType),
-              syncStatus: Value(response['sync_status'] as int? ?? localRecord.syncStatus),
+              content:
+                  Value(response['content'] as String? ?? localRecord.content),
+              inputType: Value(
+                  response['input_type'] as String? ?? localRecord.inputType),
+              syncStatus: Value(
+                  response['sync_status'] as int? ?? localRecord.syncStatus),
               notionPageId: response['notion_page_id'] != null
                   ? Value(response['notion_page_id'] as String)
                   : Value(localRecord.notionPageId),
@@ -668,11 +693,14 @@ class InspirationProvider with ChangeNotifier {
               summary: response['summary'] != null
                   ? Value(response['summary'] as String)
                   : Value(localRecord.summary),
-              aiProcessingStatus: Value(response['ai_processing_status'] as int? ?? localRecord.aiProcessingStatus),
+              aiProcessingStatus: Value(
+                  response['ai_processing_status'] as int? ??
+                      localRecord.aiProcessingStatus),
               aiErrorMessage: response['ai_error_message'] != null
                   ? Value(response['ai_error_message'] as String)
                   : Value(localRecord.aiErrorMessage),
-              updatedAt: Value(DateTime.parse(response['updated_at'] as String)),
+              updatedAt:
+                  Value(DateTime.parse(response['updated_at'] as String)),
             ),
           );
         } catch (e) {
@@ -681,8 +709,10 @@ class InspirationProvider with ChangeNotifier {
         }
       }
 
-      // Reload records WITHOUT triggering another sync (break recursion)
-      await loadRecords(triggerSync: false);
+      // Finish with an authoritative full-list reconciliation. This removes
+      // locally cached records that were deleted in Notion and then removed
+      // by the backend worker.
+      await syncAllFromBackend();
 
       _logger.i('Backend sync completed');
     } catch (e) {
@@ -709,7 +739,8 @@ class InspirationProvider with ChangeNotifier {
         content: apiResponse['content'] as String,
         inputType: apiResponse['input_type'] as String,
         id: Value(apiResponse['id'] as int),
-        categoryTags: Value(_serializeCategoryTags(apiResponse['category_tags'])),
+        categoryTags:
+            Value(_serializeCategoryTags(apiResponse['category_tags'])),
         summary: Value(apiResponse['summary'] as String?),
         notionPageId: Value(apiResponse['notion_page_id'] as String?),
         syncStatus: Value(apiResponse['sync_status'] as int? ?? 0),
@@ -717,7 +748,8 @@ class InspirationProvider with ChangeNotifier {
         audioFilePath: Value(apiResponse['audio_file_path'] as String?),
         imageFilePath: Value(apiResponse['image_file_path'] as String?),
         ocrConfidence: Value(apiResponse['ocr_confidence'] as double?),
-        aiProcessingStatus: Value(apiResponse['ai_processing_status'] as int? ?? 0),
+        aiProcessingStatus:
+            Value(apiResponse['ai_processing_status'] as int? ?? 0),
         aiErrorMessage: Value(apiResponse['ai_error_message'] as String?),
         createdAt: Value(DateTime.parse(apiResponse['created_at'] as String)),
         updatedAt: Value(DateTime.parse(apiResponse['updated_at'] as String)),
@@ -725,7 +757,6 @@ class InspirationProvider with ChangeNotifier {
 
       await _database.insertRecord(record);
       _logger.i('Record saved to local database');
-
     } catch (e) {
       _logger.e('Failed to save record to database: $e');
       throw Exception('Failed to save record locally: $e');

@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
@@ -7,6 +9,7 @@ import '../../core/constants.dart';
 import '../../core/themes.dart';
 import '../../data/database.dart';
 import '../../data/services/api_service.dart';
+import '../../data/services/app_update_service.dart';
 import '../../data/services/storage_service.dart';
 import '../../data/services/sync/connectivity_service.dart';
 import '../../data/services/sync/sync_service.dart';
@@ -26,6 +29,7 @@ class _SettingsPageState extends State<SettingsPage> {
   UserPreference? _preferences;
   bool _isLoading = true;
   bool _isSaving = false;
+  bool _isCheckingUpdate = false;
 
   // Controllers for text fields
   final _backendUrlController = TextEditingController(); // Backend API URL
@@ -67,10 +71,8 @@ class _SettingsPageState extends State<SettingsPage> {
     if (prefs != null && mounted) {
       // Load Backend URL from StorageService
       final storageService = await StorageService.getInstance();
-      final backendUrl = storageService.getString(
-        StorageService.keyApiBaseUrl,
-        defaultValue: ApiConstants.defaultBaseUrl
-      );
+      final backendUrl = storageService.getString(StorageService.keyApiBaseUrl,
+          defaultValue: ApiConstants.defaultBaseUrl);
 
       setState(() {
         _preferences = prefs;
@@ -96,16 +98,21 @@ class _SettingsPageState extends State<SettingsPage> {
       await _database.updatePreferences(
         UserPreferencesCompanion(
           id: const Value(1),
-          notionToken: Value(_notionTokenController.text.trim().isEmpty
-              ? null
-              : _notionTokenController.text.trim(),),
-          notionDatabaseId:
-              Value(_notionDatabaseIdController.text.trim().isEmpty
-                  ? null
-                  : _notionDatabaseIdController.text.trim(),),
-          openaiApiKey: Value(_openaiApiKeyController.text.trim().isEmpty
-              ? null
-              : _openaiApiKeyController.text.trim(),),
+          notionToken: Value(
+            _notionTokenController.text.trim().isEmpty
+                ? null
+                : _notionTokenController.text.trim(),
+          ),
+          notionDatabaseId: Value(
+            _notionDatabaseIdController.text.trim().isEmpty
+                ? null
+                : _notionDatabaseIdController.text.trim(),
+          ),
+          openaiApiKey: Value(
+            _openaiApiKeyController.text.trim().isEmpty
+                ? null
+                : _openaiApiKeyController.text.trim(),
+          ),
           openaiBaseUrl: Value(_openaiBaseUrlController.text.trim()),
           openaiModel: Value(_openaiModelController.text.trim()),
           deepgramApiKey: Value(_deepgramApiKeyController.text.trim()),
@@ -117,7 +124,8 @@ class _SettingsPageState extends State<SettingsPage> {
       final backendUrl = _backendUrlController.text.trim();
       if (backendUrl.isNotEmpty) {
         final storageService = await StorageService.getInstance();
-        await storageService.setString(StorageService.keyApiBaseUrl, backendUrl);
+        await storageService.setString(
+            StorageService.keyApiBaseUrl, backendUrl);
 
         // Update ApiService baseUrl immediately without restarting app
         final apiService = Provider.of<ApiService>(context, listen: false);
@@ -217,6 +225,8 @@ class _SettingsPageState extends State<SettingsPage> {
               children: [
                 _buildBackendSection(),
                 const SizedBox(height: 24),
+                _buildAppUpdateSection(),
+                const SizedBox(height: 24),
                 _buildNotionSection(),
                 const SizedBox(height: 24),
                 _buildAISection(),
@@ -229,6 +239,91 @@ class _SettingsPageState extends State<SettingsPage> {
               ],
             ),
     );
+  }
+
+  Widget _buildAppUpdateSection() {
+    return Card(
+      child: ListTile(
+        leading:
+            const Icon(Icons.system_update_rounded, color: AppColors.primary),
+        title: const Text('应用更新'),
+        subtitle: Text(
+          Platform.isAndroid ? '检查并下载最新 Android 版本' : '请通过应用商店或 TestFlight 更新',
+        ),
+        trailing: _isCheckingUpdate
+            ? const SizedBox(
+                width: 22,
+                height: 22,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              )
+            : const Icon(Icons.chevron_right_rounded),
+        onTap: _isCheckingUpdate ? null : _checkForAppUpdate,
+      ),
+    );
+  }
+
+  Future<void> _checkForAppUpdate() async {
+    if (!Platform.isAndroid) {
+      _showMessage('Android APK 更新仅支持 Android，iOS 请通过应用商店或 TestFlight 更新');
+      return;
+    }
+
+    setState(() => _isCheckingUpdate = true);
+    try {
+      final apiService = Provider.of<ApiService>(context, listen: false);
+      final updateService = AppUpdateService(apiService: apiService);
+      final update = await updateService.checkForUpdate();
+
+      if (!update.hasUpdate) {
+        _showMessage(
+            '当前已经是最新版本（${update.currentVersion}+${update.currentBuild}）');
+        return;
+      }
+
+      if (update.downloadUrl == null || update.downloadUrl!.trim().isEmpty) {
+        _showMessage('检测到新版本，但服务器尚未配置 APK 下载地址');
+        return;
+      }
+
+      if (!mounted) return;
+      final confirmed = await showDialog<bool>(
+        context: context,
+        barrierDismissible: !update.forceUpdate,
+        builder: (dialogContext) => AlertDialog(
+          title: Text('发现新版本 ${update.latestVersion}'),
+          content: Text(
+            update.releaseNotes.isEmpty ? '是否下载并安装新版本？' : update.releaseNotes,
+          ),
+          actions: [
+            if (!update.forceUpdate)
+              TextButton(
+                onPressed: () => Navigator.pop(dialogContext, false),
+                child: const Text('稍后'),
+              ),
+            FilledButton(
+              onPressed: () => Navigator.pop(dialogContext, true),
+              child: const Text('立即更新'),
+            ),
+          ],
+        ),
+      );
+
+      if (confirmed != true || !mounted) return;
+      final apkPath = await updateService.downloadApk(update);
+      await updateService.installApk(apkPath);
+      _showMessage('已打开系统安装程序，请确认安装');
+    } catch (e) {
+      _showMessage('检查更新失败：$e');
+    } finally {
+      if (mounted) setState(() => _isCheckingUpdate = false);
+    }
+  }
+
+  void _showMessage(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(content: Text(message)));
   }
 
   /// Backend API configuration section
@@ -275,12 +370,14 @@ class _SettingsPageState extends State<SettingsPage> {
               ),
               child: const Row(
                 children: [
-                  Icon(Icons.info_outline_rounded, size: 16, color: AppColors.success),
+                  Icon(Icons.info_outline_rounded,
+                      size: 16, color: AppColors.success),
                   SizedBox(width: 8),
                   Expanded(
                     child: Text(
                       '保存后立即生效,无需重启。确保地址格式正确：http://IP:端口',
-                      style: TextStyle(fontSize: 11, color: AppColors.textSecondary),
+                      style: TextStyle(
+                          fontSize: 11, color: AppColors.textSecondary),
                     ),
                   ),
                 ],
@@ -366,8 +463,11 @@ class _SettingsPageState extends State<SettingsPage> {
         children: [
           const Row(
             children: [
-              Icon(Icons.info_outline_rounded,
-                  size: 16, color: AppColors.primary,),
+              Icon(
+                Icons.info_outline_rounded,
+                size: 16,
+                color: AppColors.primary,
+              ),
               SizedBox(width: 8),
               Text(
                 '如何获取 Notion Integration?',

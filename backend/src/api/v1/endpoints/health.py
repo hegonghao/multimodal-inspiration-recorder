@@ -95,6 +95,18 @@ async def liveness_check() -> Dict[str, Any]:
     }
 
 
+@router.get("/version", summary="Mobile app update information")
+async def mobile_app_version() -> Dict[str, Any]:
+    """Return the latest mobile build configured by the server operator."""
+    return {
+        "latest_version": settings.MOBILE_APP_VERSION,
+        "latest_build": settings.MOBILE_APP_BUILD,
+        "download_url": settings.MOBILE_APP_APK_URL,
+        "release_notes": settings.MOBILE_APP_RELEASE_NOTES,
+        "force_update": settings.MOBILE_APP_FORCE_UPDATE,
+    }
+
+
 @router.get("/startup", summary="Startup check for Kubernetes")
 async def startup_check(
     db: AsyncSession = Depends(get_db),

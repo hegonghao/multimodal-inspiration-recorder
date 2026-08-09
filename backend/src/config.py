@@ -17,6 +17,11 @@ class Settings(BaseSettings):
     # Application
     APP_NAME: str = "多模输入灵感记录器"
     VERSION: str = "1.0.0"
+    MOBILE_APP_VERSION: str = "1.0.1"
+    MOBILE_APP_BUILD: int = 2
+    MOBILE_APP_APK_URL: Optional[str] = None
+    MOBILE_APP_RELEASE_NOTES: str = ""
+    MOBILE_APP_FORCE_UPDATE: bool = False
     ENVIRONMENT: str = "development"
     DEBUG: bool = True
 
