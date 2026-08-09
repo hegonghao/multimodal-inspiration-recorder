@@ -6,7 +6,7 @@ Handles CRUD operations for inspiration records with multimodal input support
 
 from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, Form
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, and_, or_, func
+from sqlalchemy import select, and_, or_, func, delete
 from typing import List, Optional
 from datetime import datetime
 import tempfile
@@ -26,11 +26,24 @@ from src.models.user_preferences import UserPreferences
 from src.services.speech_to_text import get_speech_service
 from src.services.ocr_service import get_ocr_service
 from src.services.ai_processor import get_ai_processor
+from src.services.notion_sync import NotionSyncService
 from src.utils.logger import get_logger
 from src.core.exceptions import ExternalServiceException
 
 router = APIRouter()
 logger = get_logger(__name__)
+
+
+async def _get_record_delete_notion_service(db: AsyncSession) -> NotionSyncService:
+    """Create a Notion client using user preferences first, then environment."""
+    prefs_result = await db.execute(select(UserPreferences).where(UserPreferences.id == 1))
+    prefs = prefs_result.scalar_one_or_none()
+    if prefs and prefs.notion_token and prefs.notion_token.strip():
+        return NotionSyncService(
+            notion_token=prefs.notion_token,
+            database_id=prefs.notion_database_id,
+        )
+    return NotionSyncService()
 
 # Quality thresholds for content validation
 MIN_TRANSCRIPTION_CONFIDENCE = 0.05  # Minimum confidence for voice transcription (5% - very low to support mixed Chinese-English)
@@ -821,12 +834,13 @@ async def delete_record(
     db: AsyncSession = Depends(get_db),
 ):
     """
-    Delete an inspiration record from the local database
+    Delete an inspiration record from both Notion and the local database.
 
-    This performs a hard delete of the record from the backend database.
-    Note: This does NOT delete the corresponding Notion page (if any).
-    The Notion page will remain intact even after local record deletion.
+    If the record has a Notion page ID, the Notion page is archived first. The
+    local database record and related sync queue tasks are removed only after
+    the Notion delete succeeds, so mobile and Notion do not diverge silently.
     """
+    notion_service = None
     try:
         # Fetch existing record
         result = await db.execute(
@@ -840,14 +854,38 @@ async def delete_record(
                 detail=f"Record with ID {record_id} not found"
             )
 
-        # Always delete the database record immediately
-        # User wants to delete local history, NOT Notion data
+        notion_page_id = existing_record.notion_page_id
+        if notion_page_id:
+            try:
+                notion_service = await _get_record_delete_notion_service(db)
+            except ValueError as e:
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail={
+                        "error": "notion_not_configured",
+                        "message": "Cannot delete this record because its Notion page cannot be deleted without Notion credentials.",
+                        "details": str(e),
+                    },
+                ) from e
+
+            notion_deleted = await notion_service.archive_page(notion_page_id)
+            if not notion_deleted:
+                raise HTTPException(
+                    status_code=status.HTTP_502_BAD_GATEWAY,
+                    detail={
+                        "error": "notion_delete_failed",
+                        "message": "Failed to delete the Notion page. Local record was kept to avoid inconsistent state.",
+                        "notion_page_id": notion_page_id,
+                    },
+                )
+
+        await db.execute(delete(SyncQueue).where(SyncQueue.record_id == record_id))
         await db.delete(existing_record)
         await db.commit()
 
         logger.info(
-            f"Record deleted from database: id={record_id}, "
-            f"notion_page_id={existing_record.notion_page_id or 'None'}"
+            f"Record deleted from database and Notion: id={record_id}, "
+            f"notion_page_id={notion_page_id or 'None'}"
         )
 
         return None
@@ -862,3 +900,6 @@ async def delete_record(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to delete record: {str(e)}"
         )
+    finally:
+        if notion_service:
+            await notion_service.close()

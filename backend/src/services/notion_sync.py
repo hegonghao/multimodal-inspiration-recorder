@@ -509,6 +509,47 @@ class NotionSyncService:
             )
             return False
 
+    async def is_page_archived_or_missing(self, notion_page_id: str) -> bool:
+        """
+        Check whether a Notion page was deleted/archived from Notion.
+
+        Notion exposes user-facing deletion as page archival/trash. If the page
+        can no longer be retrieved, treat it as deleted so local state can be
+        cleaned up by the background worker.
+        """
+        logger.debug(
+            "checking_notion_page_deleted_state",
+            notion_page_id=notion_page_id,
+        )
+
+        try:
+            await self._rate_limit()
+            page = await self.client.pages.retrieve(page_id=notion_page_id)
+        except APIResponseError as e:
+            if e.status == 404 or getattr(e, "code", None) == "object_not_found":
+                logger.info(
+                    "notion_page_missing",
+                    notion_page_id=notion_page_id,
+                    status_code=e.status,
+                )
+                return True
+
+            logger.warning(
+                "notion_page_deleted_state_check_failed",
+                notion_page_id=notion_page_id,
+                error=str(e),
+                status_code=e.status,
+            )
+            return False
+
+        archived = bool(page.get("archived") or page.get("in_trash"))
+        if archived:
+            logger.info(
+                "notion_page_archived_or_in_trash",
+                notion_page_id=notion_page_id,
+            )
+        return archived
+
     async def verify_connection(self) -> bool:
         """
         Verify Notion API connection and database access.

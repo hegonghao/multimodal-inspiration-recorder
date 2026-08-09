@@ -13,7 +13,7 @@ import structlog
 from arq import create_pool
 from arq.connections import RedisSettings, ArqRedis
 from arq.cron import cron
-from sqlalchemy import select, update
+from sqlalchemy import select, update, delete, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.config import settings
@@ -566,6 +566,107 @@ async def scheduled_sync_check(ctx: dict) -> dict:
             await session.close()
 
 
+async def _get_notion_service_for_worker(
+    session: AsyncSession,
+) -> NotionSyncService | None:
+    """Create a Notion service for scheduled worker jobs."""
+    from src.models.user_preferences import UserPreferences
+
+    prefs_result = await session.execute(select(UserPreferences).where(UserPreferences.id == 1))
+    prefs = prefs_result.scalar_one_or_none()
+
+    if prefs and prefs.notion_token and prefs.notion_token.strip():
+        if not prefs.notion_database_id or not prefs.notion_database_id.strip():
+            return None
+        return NotionSyncService(
+            notion_token=prefs.notion_token,
+            database_id=prefs.notion_database_id,
+        )
+
+    notion_token = getattr(settings, "NOTION_TOKEN", None) or getattr(
+        settings,
+        "NOTION_API_KEY",
+        None,
+    )
+    database_id = getattr(settings, "NOTION_DATABASE_ID", None)
+    if not notion_token or not notion_token.strip() or not database_id or not database_id.strip():
+        return None
+
+    return NotionSyncService(notion_token=notion_token, database_id=database_id)
+
+
+async def scheduled_notion_deletion_check(ctx: dict) -> dict:
+    """Remove local records whose Notion pages were deleted/archived in Notion."""
+    logger.info("scheduled_notion_deletion_check_started")
+
+    session: Optional[AsyncSession] = None
+    notion_service: Optional[NotionSyncService] = None
+
+    try:
+        session = await get_db_session()
+        notion_service = await _get_notion_service_for_worker(session)
+        if not notion_service:
+            logger.debug("notion_deletion_check_skipped_missing_credentials")
+            return {
+                "status": "skipped",
+                "message": "Notion credentials not configured",
+                "deleted_count": 0,
+            }
+
+        result = await session.execute(
+            select(InspirationRecord)
+            .where(InspirationRecord.notion_page_id.isnot(None))
+            .order_by(func.random())
+            .limit(settings.NOTION_SYNC_BATCH_SIZE)
+        )
+        records = result.scalars().all()
+
+        deleted_count = 0
+        for record in records:
+            if await notion_service.is_page_archived_or_missing(record.notion_page_id):
+                await session.execute(delete(SyncQueue).where(SyncQueue.record_id == record.id))
+                await session.delete(record)
+                deleted_count += 1
+                logger.info(
+                    "local_record_deleted_after_notion_delete",
+                    record_id=record.id,
+                    notion_page_id=record.notion_page_id,
+                )
+
+        if deleted_count:
+            await session.commit()
+
+        logger.info(
+            "scheduled_notion_deletion_check_completed",
+            checked_count=len(records),
+            deleted_count=deleted_count,
+        )
+        return {
+            "status": "success",
+            "checked_count": len(records),
+            "deleted_count": deleted_count,
+        }
+
+    except Exception as e:
+        logger.error(
+            "scheduled_notion_deletion_check_failed",
+            error=str(e),
+            exc_info=True,
+        )
+        if session:
+            await session.rollback()
+        return {
+            "status": "error",
+            "error": str(e),
+        }
+
+    finally:
+        if notion_service:
+            await notion_service.close()
+        if session:
+            await session.close()
+
+
 # ==================== Worker Registration ====================
 
 
@@ -594,7 +695,9 @@ class WorkerSettingsClass:
     # Scheduled jobs (run every 1 minute)
     cron_jobs = [
         # Check for pending sync tasks every minute
-        cron(scheduled_sync_check, minute=set(range(0, 60, 1)), unique=True)
+        cron(scheduled_sync_check, minute=set(range(0, 60, 1)), unique=True),
+        # Check for pages deleted directly in Notion every 5 minutes
+        cron(scheduled_notion_deletion_check, minute=set(range(0, 60, 5)), unique=True),
     ]
 
     on_startup = startup
