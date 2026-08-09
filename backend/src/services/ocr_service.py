@@ -64,8 +64,14 @@ class OCRService:
             logger.warning("PP-OCRv6 does not expose useChartRecognition; option ignored")
 
         try:
+            file_bytes = path.read_bytes()
+            if not file_bytes:
+                raise ExternalServiceException(
+                    "OCR file is empty",
+                    error_code="PADDLEOCR_INVALID_INPUT",
+                )
             return await self._call_ocr_api(
-                file_bytes=path.read_bytes(),
+                file_bytes=file_bytes,
                 filename=path.name,
                 content_type=mimetypes.guess_type(path.name)[0],
                 use_orientation_classify=use_orientation_classify,
@@ -94,6 +100,11 @@ class OCRService:
     ) -> dict[str, Any]:
         """Submit image/PDF bytes and wait for the OCR result."""
         del language_hints
+        if not image_bytes:
+            raise ExternalServiceException(
+                "OCR input is empty",
+                error_code="PADDLEOCR_INVALID_INPUT",
+            )
         if use_chart_recognition:
             logger.warning("PP-OCRv6 does not expose useChartRecognition; option ignored")
 
@@ -401,15 +412,64 @@ class OCRService:
         return [], []
 
     def _http_error(self, response: httpx.Response, action: str) -> ExternalServiceException:
+        """Convert an upstream error into a useful, bounded diagnostic.
+
+        PaddleOCR sometimes returns HTTP 500 with the actual reason only in the
+        response body. Keeping that body in the exception makes the backend log
+        actionable without ever including request headers (and therefore the
+        bearer token).
+        """
         message = f"PaddleOCR {action} failed with HTTP {response.status_code}"
+        response_summary = ""
+        upstream_trace_id = None
         try:
             payload = response.json()
-            api_message = payload.get("message") or payload.get("errorMsg")
+            if isinstance(payload, dict):
+                api_message = (
+                    payload.get("message")
+                    or payload.get("errorMsg")
+                    or payload.get("error")
+                    or payload.get("msg")
+                )
+                upstream_trace_id = payload.get("traceId") or payload.get("trace_id")
+            else:
+                api_message = None
+                upstream_trace_id = None
             if api_message:
-                message = f"{message}: {api_message}"
+                response_summary = str(api_message)
         except (ValueError, AttributeError):
-            pass
-        return ExternalServiceException(message, error_code="PADDLEOCR_API_ERROR")
+            response_summary = ""
+
+        if not response_summary:
+            response_summary = response.text.strip()
+        if response_summary:
+            # Avoid flooding application logs with an HTML proxy page or a
+            # huge upstream trace. The first 1000 chars usually contain the
+            # actionable error and are enough for incident diagnosis.
+            response_summary = response_summary[:1000]
+            message = f"{message}: {response_summary}"
+
+        request_id = next(
+            (
+                response.headers.get(header)
+                for header in ("x-request-id", "request-id", "trace-id")
+                if response.headers.get(header)
+            ),
+            None,
+        )
+        request_id = request_id or upstream_trace_id
+        if request_id:
+            message = f"{message} (traceId: {request_id})"
+        details: dict[str, Any] = {"status_code": response.status_code}
+        if response_summary:
+            details["response"] = response_summary
+        if request_id:
+            details["request_id"] = request_id
+        return ExternalServiceException(
+            message,
+            error_code="PADDLEOCR_API_ERROR",
+            details=details,
+        )
 
     def _detect_language(self, text: str) -> str:
         if not text:

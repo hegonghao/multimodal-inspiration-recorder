@@ -119,6 +119,26 @@ class OCRServiceV6Tests(unittest.IsolatedAsyncioTestCase):
             await service.extract_text_from_bytes(b"bad file")
         self.assertEqual(caught.exception.error_code, "PADDLEOCR_JOB_FAILED")
 
+    async def test_http_500_includes_upstream_diagnostic_without_auth_header(self) -> None:
+        async def handler(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(
+                500,
+                json={"msg": "temporary model backend failure", "traceId": "req-123"},
+            )
+
+        service = OCRService(
+            api_url="https://paddleocr.example/api/v2/ocr/jobs",
+            token="test-token",
+            transport=httpx.MockTransport(handler),
+        )
+        with self.assertRaises(ExternalServiceException) as caught:
+            await service.extract_text_from_bytes(b"image bytes")
+
+        self.assertIn("HTTP 500", caught.exception.message)
+        self.assertIn("temporary model backend failure", caught.exception.message)
+        self.assertIn("traceId: req-123", caught.exception.message)
+        self.assertEqual(caught.exception.details["request_id"], "req-123")
+
 
 if __name__ == "__main__":
     unittest.main()
