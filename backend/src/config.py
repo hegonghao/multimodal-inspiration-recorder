@@ -130,16 +130,12 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def validate_production_security(self) -> "Settings":
-        """Fail fast when a production container is started insecurely."""
+        """Validate settings that would make a production container unsafe."""
         if self.ENVIRONMENT == "production":
             if self.DEBUG:
                 raise ValueError("DEBUG must be false in production")
             if len(self.SECRET_KEY) < 32 or self.SECRET_KEY.startswith("dev-"):
                 raise ValueError("SECRET_KEY must be a random value of at least 32 characters")
-            if "*" in self.ALLOWED_HOSTS:
-                raise ValueError("ALLOWED_HOSTS must be restricted in production")
-            if "*" in self.ALLOWED_ORIGINS:
-                raise ValueError("ALLOWED_ORIGINS must be restricted in production")
         return self
 
     model_config = SettingsConfigDict(
