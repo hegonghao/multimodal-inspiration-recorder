@@ -1,5 +1,8 @@
 # PaddleOCR 功能升级总结
 
+> 2026-08-09：后端已切换到 PaddleOCR v6 异步 Jobs API。本文早期的版面解析能力描述
+> 不代表当前 PP-OCRv6 纯 OCR 接口；最新协议以 `PADDLEOCR_V6_MIGRATION.md` 为准。
+
 ## 升级完成时间
 **2025-11-07 23:59**
 

@@ -1,4 +1,8 @@
-# OCR 服务迁移指南：从 Google Cloud Vision 到 PaddleOCR-VL
+# OCR 服务迁移指南：从 Google Cloud Vision 到 PaddleOCR v6
+
+> 当前实现已迁移到 PaddleOCR v6 异步 Jobs API。本文中旧的
+> `layout-parsing`、Base64 JSON 和 `Authorization: token` 示例仅作为历史背景；
+> 最新配置和调用流程请以仓库根目录 `PADDLEOCR_V6_MIGRATION.md` 为准。
 
 ## 迁移概览
 

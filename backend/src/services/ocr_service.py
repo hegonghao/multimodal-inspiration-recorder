@@ -1,439 +1,482 @@
-"""
-OCR (Optical Character Recognition) Service
-
-Provides text recognition from images and PDFs using PaddleOCR-VL API
-with layout parsing and markdown output support.
-"""
+"""PaddleOCR v6 asynchronous job client."""
 
 import asyncio
-import base64
-from typing import Optional, Dict, Any, List
-from pathlib import Path
+import json
 import mimetypes
+import time
+from pathlib import Path
+from typing import Any, Optional
 
 import httpx
 
-from src.utils.logger import get_logger
 from src.core.exceptions import ExternalServiceException
+from src.utils.logger import get_logger
 
 logger = get_logger(__name__)
 
 
 class OCRService:
-    """
-    Service for extracting text from images and PDFs using PaddleOCR-VL API
+    """Extract text from images and PDFs through PaddleOCR v6."""
 
-    Features:
-    - High accuracy text recognition for Chinese/English
-    - Support for both images (PNG, JPG, WEBP) and PDF files
-    - Layout parsing and analysis
-    - Markdown-formatted output
-    - Chart recognition (optional)
-    - Document orientation and unwarping correction (optional)
-    """
-
-    def __init__(self, api_url: str, token: str):
-        """
-        Initialize OCR service
-
-        Args:
-            api_url: PaddleOCR-VL API endpoint URL
-            token: API authentication token
-        """
+    def __init__(
+        self,
+        api_url: str,
+        token: str,
+        model: str = "PP-OCRv6",
+        poll_interval: float = 5.0,
+        job_timeout: float = 300.0,
+        request_timeout: float = 60.0,
+        transport: httpx.AsyncBaseTransport | None = None,
+    ) -> None:
         if not api_url or not token:
             raise ValueError("PaddleOCR API URL and token are required")
 
         self.api_url = api_url.rstrip("/")
         self.token = token
-        self.timeout = 60.0  # OCR can be slow for large documents
+        self.model = model
+        self.poll_interval = max(poll_interval, 0.0)
+        self.job_timeout = max(job_timeout, 1.0)
+        self.request_timeout = max(request_timeout, 1.0)
+        self.transport = transport
+
+        if not self.api_url.endswith("/api/v2/ocr/jobs"):
+            logger.warning(
+                "PaddleOCR v6 endpoint usually ends with /api/v2/ocr/jobs: %s",
+                self.api_url,
+            )
 
     async def extract_text_from_image(
         self,
         image_file_path: str,
-        language_hints: Optional[List[str]] = None,
+        language_hints: Optional[list[str]] = None,
         use_chart_recognition: bool = False,
         use_orientation_classify: bool = False,
         use_unwarping: bool = False,
-    ) -> Dict[str, Any]:
-        """
-        Extract text from image file
+        use_textline_orientation: bool = False,
+    ) -> dict[str, Any]:
+        """Submit a local image or PDF and wait for its OCR result."""
+        del language_hints
+        path = Path(image_file_path)
+        if not path.exists():
+            raise FileNotFoundError(f"OCR file not found: {image_file_path}")
 
-        Args:
-            image_file_path: Path to image file (PNG, JPG, WEBP, etc.)
-            language_hints: Unused, kept for API compatibility
-            use_chart_recognition: Enable chart recognition
-            use_orientation_classify: Enable document orientation correction
-            use_unwarping: Enable document unwarping (dewarp)
+        if use_chart_recognition:
+            logger.warning("PP-OCRv6 does not expose useChartRecognition; option ignored")
 
-        Returns:
-            Dict containing OCR results:
-            {
-                "text": "extracted text content",
-                "confidence": 0.95,
-                "language": "zh",
-                "word_count": 120,
-                "blocks": [],
-                "markdown": "# markdown formatted text"
-            }
-
-        Raises:
-            ExternalServiceException: If OCR fails
-        """
         try:
-            logger.info(f"Starting OCR for: {image_file_path}")
-
-            # Verify file exists
-            image_path = Path(image_file_path)
-            if not image_path.exists():
-                raise FileNotFoundError(f"Image file not found: {image_file_path}")
-
-            # Read and encode image
-            with open(image_file_path, "rb") as f:
-                file_bytes = f.read()
-
-            # Determine file type
-            mime_type, _ = mimetypes.guess_type(image_file_path)
-            file_type = self._get_file_type(mime_type, image_path.suffix)
-
-            # Call OCR API
-            result = await self._call_ocr_api(
-                file_bytes=file_bytes,
-                file_type=file_type,
-                use_chart_recognition=use_chart_recognition,
+            return await self._call_ocr_api(
+                file_bytes=path.read_bytes(),
+                filename=path.name,
+                content_type=mimetypes.guess_type(path.name)[0],
                 use_orientation_classify=use_orientation_classify,
                 use_unwarping=use_unwarping,
+                use_textline_orientation=use_textline_orientation,
             )
-
-            logger.info(
-                f"OCR completed: {result['word_count']} words, "
-                f"language: {result['language']}"
-            )
-
-            return result
-
-        except FileNotFoundError as e:
-            logger.error(f"Image file not found: {e}")
+        except ExternalServiceException:
             raise
-
-        except Exception as e:
-            logger.error(f"OCR failed: {type(e).__name__}: {e}")
+        except Exception as exc:
+            logger.exception("PaddleOCR file processing failed")
             raise ExternalServiceException(
-                f"Failed to extract text from image: {str(e)}",
-                error_code="OCR_FAILED"
-            )
+                f"Failed to extract text from file: {exc}",
+                error_code="OCR_FAILED",
+            ) from exc
 
     async def extract_text_from_bytes(
         self,
         image_bytes: bytes,
-        language_hints: Optional[List[str]] = None,
-        file_type: int = 1,  # 1 = image, 0 = PDF
+        language_hints: Optional[list[str]] = None,
+        file_type: int = 1,
         use_chart_recognition: bool = False,
-    ) -> Dict[str, Any]:
-        """
-        Extract text from image bytes
+        filename: str | None = None,
+        use_orientation_classify: bool = False,
+        use_unwarping: bool = False,
+        use_textline_orientation: bool = False,
+    ) -> dict[str, Any]:
+        """Submit image/PDF bytes and wait for the OCR result."""
+        del language_hints
+        if use_chart_recognition:
+            logger.warning("PP-OCRv6 does not expose useChartRecognition; option ignored")
 
-        Args:
-            image_bytes: Image or PDF file content as bytes
-            language_hints: Unused, kept for API compatibility
-            file_type: 0 for PDF, 1 for image
-            use_chart_recognition: Enable chart recognition
+        default_name = "document.pdf" if file_type == 0 else "image.png"
+        upload_name = filename or default_name
+        content_type = mimetypes.guess_type(upload_name)[0]
 
-        Returns:
-            OCR result dict
-        """
         try:
-            logger.info(f"Starting OCR from bytes (type={file_type})")
-
-            result = await self._call_ocr_api(
+            return await self._call_ocr_api(
                 file_bytes=image_bytes,
-                file_type=file_type,
-                use_chart_recognition=use_chart_recognition,
+                filename=upload_name,
+                content_type=content_type,
+                use_orientation_classify=use_orientation_classify,
+                use_unwarping=use_unwarping,
+                use_textline_orientation=use_textline_orientation,
             )
-
-            logger.info(f"OCR completed: {result['word_count']} words")
-            return result
-
-        except Exception as e:
-            logger.error(f"OCR failed: {e}")
+        except ExternalServiceException:
+            raise
+        except Exception as exc:
+            logger.exception("PaddleOCR byte processing failed")
             raise ExternalServiceException(
-                f"Failed to extract text from bytes: {str(e)}",
-                error_code="OCR_FAILED"
-            )
+                f"Failed to extract text from bytes: {exc}",
+                error_code="OCR_FAILED",
+            ) from exc
+
+    async def extract_text_from_url(
+        self,
+        file_url: str,
+        use_orientation_classify: bool = False,
+        use_unwarping: bool = False,
+        use_textline_orientation: bool = False,
+    ) -> dict[str, Any]:
+        """Submit a remote file URL and wait for the OCR result."""
+        if not file_url.startswith(("http://", "https://")):
+            raise ValueError("file_url must use http or https")
+
+        return await self._call_ocr_api(
+            file_url=file_url,
+            use_orientation_classify=use_orientation_classify,
+            use_unwarping=use_unwarping,
+            use_textline_orientation=use_textline_orientation,
+        )
 
     async def _call_ocr_api(
         self,
-        file_bytes: bytes,
-        file_type: int,
-        use_chart_recognition: bool = False,
+        file_bytes: bytes | None = None,
+        filename: str = "image.png",
+        content_type: str | None = None,
+        file_url: str | None = None,
         use_orientation_classify: bool = False,
         use_unwarping: bool = False,
-    ) -> Dict[str, Any]:
-        """
-        Call PaddleOCR-VL API
+        use_textline_orientation: bool = False,
+    ) -> dict[str, Any]:
+        """Submit, poll and download one PaddleOCR v6 job."""
+        if (file_bytes is None) == (file_url is None):
+            raise ValueError("Provide exactly one of file_bytes or file_url")
 
-        Args:
-            file_bytes: File content
-            file_type: 0 for PDF, 1 for image
-            use_chart_recognition: Enable chart recognition
-            use_orientation_classify: Enable orientation correction
-            use_unwarping: Enable document unwarping
-
-        Returns:
-            Processed OCR result
-        """
-        # Encode file to base64
-        file_data = base64.b64encode(file_bytes).decode("ascii")
-
-        # Prepare request
-        headers = {
-            "Authorization": f"token {self.token}",
-            "Content-Type": "application/json"
-        }
-
-        payload = {
-            "file": file_data,
-            "fileType": file_type,
-            "useChartRecognition": use_chart_recognition,
+        optional_payload = {
             "useDocOrientationClassify": use_orientation_classify,
             "useDocUnwarping": use_unwarping,
+            "useTextlineOrientation": use_textline_orientation,
         }
+        headers = {"Authorization": f"bearer {self.token}"}
 
-        # Make API request
-        async with httpx.AsyncClient(timeout=self.timeout) as client:
-            response = await client.post(
-                self.api_url,
-                json=payload,
-                headers=headers
-            )
+        try:
+            async with httpx.AsyncClient(
+                timeout=self.request_timeout,
+                transport=self.transport,
+                follow_redirects=True,
+            ) as client:
+                if file_url is not None:
+                    response = await client.post(
+                        self.api_url,
+                        headers={**headers, "Content-Type": "application/json"},
+                        json={
+                            "fileUrl": file_url,
+                            "model": self.model,
+                            "optionalPayload": optional_payload,
+                        },
+                    )
+                else:
+                    response = await client.post(
+                        self.api_url,
+                        headers=headers,
+                        data={
+                            "model": self.model,
+                            "optionalPayload": json.dumps(optional_payload),
+                        },
+                        files={
+                            "file": (
+                                filename,
+                                file_bytes,
+                                content_type or "application/octet-stream",
+                            )
+                        },
+                    )
 
-            response.raise_for_status()
-            api_result = response.json()
-
-        # Check for API errors
-        if api_result.get("errorCode", 0) != 0:
-            error_msg = api_result.get("errorMsg", "Unknown error")
+                job_id = self._parse_job_submission(response)
+                result_url = await self._poll_job(client, headers, job_id)
+                return await self._download_result(client, result_url)
+        except ExternalServiceException:
+            raise
+        except httpx.TimeoutException as exc:
             raise ExternalServiceException(
-                f"PaddleOCR API error: {error_msg}",
-                error_code="PADDLEOCR_API_ERROR"
+                "PaddleOCR request timed out",
+                error_code="PADDLEOCR_TIMEOUT",
+            ) from exc
+        except httpx.HTTPError as exc:
+            raise ExternalServiceException(
+                f"PaddleOCR HTTP request failed: {exc}",
+                error_code="PADDLEOCR_HTTP_ERROR",
+            ) from exc
+
+    def _parse_job_submission(self, response: httpx.Response) -> str:
+        if response.status_code != 200:
+            raise self._http_error(response, "submit")
+
+        try:
+            job_id = response.json()["data"]["jobId"]
+        except (KeyError, TypeError, ValueError) as exc:
+            raise ExternalServiceException(
+                "PaddleOCR submit response did not contain data.jobId",
+                error_code="PADDLEOCR_INVALID_RESPONSE",
+            ) from exc
+
+        if not isinstance(job_id, str) or not job_id:
+            raise ExternalServiceException(
+                "PaddleOCR returned an invalid job id",
+                error_code="PADDLEOCR_INVALID_RESPONSE",
             )
+        return job_id
 
-        # Extract results
-        return self._parse_ocr_result(api_result)
+    async def _poll_job(
+        self,
+        client: httpx.AsyncClient,
+        headers: dict[str, str],
+        job_id: str,
+    ) -> str:
+        deadline = time.monotonic() + self.job_timeout
+        status_url = f"{self.api_url}/{job_id}"
 
-    def _parse_ocr_result(self, api_result: Dict[str, Any]) -> Dict[str, Any]:
-        """
-        Parse PaddleOCR API result into standardized format
+        while time.monotonic() < deadline:
+            response = await client.get(status_url, headers=headers)
+            if response.status_code != 200:
+                raise self._http_error(response, "poll")
 
-        Args:
-            api_result: Raw API response
+            try:
+                data = response.json()["data"]
+                state = str(data["state"]).lower()
+            except (KeyError, TypeError, ValueError) as exc:
+                raise ExternalServiceException(
+                    "PaddleOCR poll response is malformed",
+                    error_code="PADDLEOCR_INVALID_RESPONSE",
+                ) from exc
 
-        Returns:
-            Standardized OCR result
-        """
-        result = api_result.get("result", {})
-        layout_results = result.get("layoutParsingResults", [])
+            if state == "done":
+                try:
+                    result_url = data["resultUrl"]["jsonUrl"]
+                except (KeyError, TypeError) as exc:
+                    raise ExternalServiceException(
+                        "PaddleOCR completed without resultUrl.jsonUrl",
+                        error_code="PADDLEOCR_INVALID_RESPONSE",
+                    ) from exc
+                if not isinstance(result_url, str) or not result_url:
+                    raise ExternalServiceException(
+                        "PaddleOCR returned an invalid result URL",
+                        error_code="PADDLEOCR_INVALID_RESPONSE",
+                    )
+                return result_url
 
-        if not layout_results:
-            logger.warning("No text detected in document")
-            return {
-                "text": "",
-                "confidence": 0.0,
-                "language": "unknown",
-                "word_count": 0,
-                "blocks": [],
-                "markdown": "",
-            }
+            if state == "failed":
+                message = str(data.get("errorMsg") or "Unknown OCR job failure")
+                raise ExternalServiceException(
+                    f"PaddleOCR job failed: {message}",
+                    error_code="PADDLEOCR_JOB_FAILED",
+                )
 
-        # Combine all pages (for multi-page PDFs)
-        all_text = []
-        all_markdown = []
+            if state not in {"pending", "running"}:
+                raise ExternalServiceException(
+                    f"PaddleOCR returned unknown job state: {state}",
+                    error_code="PADDLEOCR_INVALID_RESPONSE",
+                )
 
-        for page_result in layout_results:
-            markdown_data = page_result.get("markdown", {})
-            markdown_text = markdown_data.get("text", "")
+            await asyncio.sleep(self.poll_interval)
 
-            if markdown_text:
-                all_text.append(markdown_text)
-                all_markdown.append(markdown_text)
+        raise ExternalServiceException(
+            f"PaddleOCR job did not finish within {self.job_timeout:g} seconds",
+            error_code="PADDLEOCR_JOB_TIMEOUT",
+        )
 
-        # Combine results
-        full_text = "\n\n".join(all_text)
-        full_markdown = "\n\n".join(all_markdown)
+    async def _download_result(
+        self,
+        client: httpx.AsyncClient,
+        result_url: str,
+    ) -> dict[str, Any]:
+        response = await client.get(result_url)
+        if response.status_code != 200:
+            raise self._http_error(response, "download result")
+        return self._parse_jsonl_result(response.text)
 
-        # Detect language
-        detected_language = self._detect_language(full_text)
+    def _parse_jsonl_result(self, content: str) -> dict[str, Any]:
+        all_text: list[str] = []
+        all_scores: list[float] = []
+        blocks: list[dict[str, Any]] = []
+        page_count = 0
 
-        # Calculate word count (approximate)
-        word_count = len(full_text.split())
+        for line_number, raw_line in enumerate(content.splitlines(), start=1):
+            line = raw_line.strip()
+            if not line:
+                continue
+            try:
+                item = json.loads(line)
+            except json.JSONDecodeError as exc:
+                raise ExternalServiceException(
+                    f"PaddleOCR result contains invalid JSONL at line {line_number}",
+                    error_code="PADDLEOCR_INVALID_RESULT",
+                ) from exc
 
-        # PaddleOCR doesn't provide confidence scores
-        # Use a default high confidence since it's generally accurate
-        confidence = 0.95 if full_text else 0.0
+            result = item.get("result", item) if isinstance(item, dict) else {}
+            entries = result.get("ocrResults") if isinstance(result, dict) else None
+            if not isinstance(entries, list) or not entries:
+                entries = [result]
+
+            page_count += len(entries)
+            for entry in entries:
+                texts, scores = self._extract_text_and_scores(entry)
+                all_text.extend(texts)
+                all_scores.extend(scores)
+                for index, text in enumerate(texts):
+                    block: dict[str, Any] = {"text": text}
+                    if index < len(scores):
+                        block["confidence"] = scores[index]
+                    blocks.append(block)
+
+        full_text = "\n".join(text for text in all_text if text).strip()
+        confidence = (
+            sum(all_scores) / len(all_scores)
+            if all_scores
+            else (0.95 if full_text else 0.0)
+        )
 
         return {
             "text": full_text,
-            "confidence": confidence,
-            "language": detected_language,
-            "word_count": word_count,
-            "blocks": [],  # PaddleOCR doesn't provide block-level details in this format
-            "markdown": full_markdown,
-            "page_count": len(layout_results),
+            "confidence": max(0.0, min(confidence, 1.0)),
+            "language": self._detect_language(full_text),
+            "word_count": len(full_text.split()),
+            "blocks": blocks,
+            # PP-OCRv6 returns plain OCR lines rather than layout Markdown.
+            "markdown": full_text,
+            "page_count": page_count,
         }
 
-    def _get_file_type(self, mime_type: Optional[str], suffix: str) -> int:
-        """
-        Determine file type code for PaddleOCR API
+    def _extract_text_and_scores(self, entry: Any) -> tuple[list[str], list[float]]:
+        if isinstance(entry, str):
+            try:
+                entry = json.loads(entry)
+            except json.JSONDecodeError:
+                return ([entry] if entry.strip() else []), []
+        if not isinstance(entry, dict):
+            return [], []
 
-        Args:
-            mime_type: MIME type of file
-            suffix: File extension
+        candidates: list[dict[str, Any]] = []
+        for key in ("prunedResult", "result", "res"):
+            value = entry.get(key)
+            if isinstance(value, str):
+                try:
+                    value = json.loads(value)
+                except json.JSONDecodeError:
+                    value = {"text": value}
+            if isinstance(value, dict):
+                candidates.append(value)
+        candidates.append(entry)
 
-        Returns:
-            0 for PDF, 1 for image
-        """
-        if mime_type == "application/pdf" or suffix.lower() == ".pdf":
-            return 0
-        return 1
+        for candidate in candidates:
+            raw_texts = None
+            for key in ("rec_texts", "recTexts", "texts", "recognizedTexts"):
+                if isinstance(candidate.get(key), list):
+                    raw_texts = candidate[key]
+                    break
+
+            texts = [str(value).strip() for value in raw_texts or [] if str(value).strip()]
+            if not texts:
+                text = candidate.get("text")
+                if isinstance(text, str) and text.strip():
+                    texts = [text.strip()]
+                markdown = candidate.get("markdown")
+                if not texts and isinstance(markdown, dict):
+                    markdown_text = markdown.get("text")
+                    if isinstance(markdown_text, str) and markdown_text.strip():
+                        texts = [markdown_text.strip()]
+
+            if texts:
+                raw_scores = None
+                for key in ("rec_scores", "recScores", "scores", "confidence"):
+                    value = candidate.get(key)
+                    if isinstance(value, list):
+                        raw_scores = value
+                        break
+                    if isinstance(value, (int, float)):
+                        raw_scores = [value]
+                        break
+                scores = [float(value) for value in raw_scores or [] if isinstance(value, (int, float))]
+                return texts, scores
+
+        return [], []
+
+    def _http_error(self, response: httpx.Response, action: str) -> ExternalServiceException:
+        message = f"PaddleOCR {action} failed with HTTP {response.status_code}"
+        try:
+            payload = response.json()
+            api_message = payload.get("message") or payload.get("errorMsg")
+            if api_message:
+                message = f"{message}: {api_message}"
+        except (ValueError, AttributeError):
+            pass
+        return ExternalServiceException(message, error_code="PADDLEOCR_API_ERROR")
 
     def _detect_language(self, text: str) -> str:
-        """
-        Detect primary language of text
-
-        Args:
-            text: Text to analyze
-
-        Returns:
-            Language code ('zh', 'en', 'ja', etc.)
-        """
         if not text:
             return "unknown"
-
-        # Simple heuristic based on character ranges
-        chinese_chars = sum(1 for c in text if '\u4e00' <= c <= '\u9fff')
-        japanese_chars = sum(
-            1 for c in text
-            if '\u3040' <= c <= '\u309f' or '\u30a0' <= c <= '\u30ff'
+        total = len(text)
+        chinese = sum(1 for char in text if "\u4e00" <= char <= "\u9fff")
+        japanese = sum(
+            1
+            for char in text
+            if "\u3040" <= char <= "\u309f" or "\u30a0" <= char <= "\u30ff"
         )
-        korean_chars = sum(1 for c in text if '\uac00' <= c <= '\ud7af')
-        total_chars = len(text)
-
-        if total_chars == 0:
-            return "unknown"
-
-        # Chinese
-        if chinese_chars / total_chars > 0.3:
+        korean = sum(1 for char in text if "\uac00" <= char <= "\ud7af")
+        if chinese / total > 0.3:
             return "zh"
-        # Japanese
-        elif japanese_chars / total_chars > 0.3:
+        if japanese / total > 0.3:
             return "ja"
-        # Korean
-        elif korean_chars / total_chars > 0.3:
+        if korean / total > 0.3:
             return "ko"
-        # Default to English
-        else:
-            return "en"
+        return "en"
 
     async def health_check(self) -> bool:
-        """
-        Check if PaddleOCR API is accessible
-
-        Note: Uses a simple connectivity check. Small test images may return 500
-        errors from the OCR service, but that still indicates the API is reachable.
-
-        Returns:
-            True if service is healthy (API is accessible), False otherwise
-        """
+        """Check endpoint reachability without submitting a billable OCR job."""
         try:
-            # Create a minimal test image (10x10 white PNG)
-            test_image_bytes = bytearray([
-                0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A,  # PNG signature
-                0x00, 0x00, 0x00, 0x0D, 0x49, 0x48, 0x44, 0x52,  # IHDR chunk
-                0x00, 0x00, 0x00, 0x0A, 0x00, 0x00, 0x00, 0x0A,  # 10x10 dimensions
-                0x08, 0x02, 0x00, 0x00, 0x00, 0x02, 0x50, 0x58,
-                0xEA, 0x00, 0x00, 0x00, 0x01, 0x73, 0x52, 0x47,
-                0x42, 0x00, 0xAE, 0xCE, 0x1C, 0xE9, 0x00, 0x00,
-                0x00, 0x17, 0x49, 0x44, 0x41, 0x54, 0x18, 0x57,  # IDAT chunk
-                0x63, 0xF8, 0xFF, 0xFF, 0x3F, 0x03, 0x03, 0x00,
-                0x00, 0x00, 0x00, 0x09, 0x00, 0x01, 0x2F, 0xD4,
-                0xEF, 0x3F, 0x00, 0x00, 0x00, 0x00, 0x49, 0x45,
-                0x4E, 0x44, 0xAE, 0x42, 0x60, 0x82  # IEND chunk
-            ])
-
-            file_data = base64.b64encode(bytes(test_image_bytes)).decode("ascii")
-
-            headers = {
-                "Authorization": f"token {self.token}",
-                "Content-Type": "application/json"
-            }
-
-            payload = {
-                "file": file_data,
-                "fileType": 1,
-            }
-
-            # Make request - we only care if API is reachable
-            async with httpx.AsyncClient(timeout=10.0) as client:
-                response = await client.post(
+            async with httpx.AsyncClient(
+                timeout=min(self.request_timeout, 10.0),
+                transport=self.transport,
+                follow_redirects=True,
+            ) as client:
+                response = await client.get(
                     self.api_url,
-                    json=payload,
-                    headers=headers
+                    headers={"Authorization": f"bearer {self.token}"},
                 )
-
-                # Any response (even 500) means API is accessible
-                # 401/403 would indicate auth issues
-                # Connection errors would raise an exception
-                if response.status_code in [401, 403]:
-                    logger.error("PaddleOCR API authentication failed")
-                    return False
-
-                # 500 is acceptable for health check (API is reachable)
-                logger.info(f"PaddleOCR API health check: status {response.status_code}")
-                return True
-
-        except httpx.ConnectError as e:
-            logger.error(f"PaddleOCR API connection failed: {e}")
-            return False
-        except httpx.TimeoutException:
-            logger.error("PaddleOCR API health check timed out")
-            return False
-        except Exception as e:
-            logger.error(f"PaddleOCR API health check failed: {e}")
+            if response.status_code in {401, 403, 404}:
+                return False
+            return response.status_code < 500
+        except httpx.HTTPError as exc:
+            logger.error("PaddleOCR health check failed: %s", exc)
             return False
 
 
-# Singleton instance
-_ocr_service: Optional[OCRService] = None
+_ocr_service: OCRService | None = None
 
 
 def get_ocr_service(
     api_url: Optional[str] = None,
-    token: Optional[str] = None
+    token: Optional[str] = None,
 ) -> OCRService:
-    """
-    Get or create OCR service instance
-
-    Args:
-        api_url: PaddleOCR API URL (required on first call if not in config)
-        token: PaddleOCR API token (required on first call if not in config)
-
-    Returns:
-        OCRService instance
-    """
+    """Return the configured PaddleOCR v6 singleton."""
     global _ocr_service
 
     if _ocr_service is None:
-        # Try to get from config if not provided
-        if api_url is None or token is None:
-            from src.config import settings
-            api_url = api_url or settings.PADDLEOCR_API_URL
-            token = token or settings.PADDLEOCR_TOKEN
+        from src.config import settings
 
+        api_url = api_url or settings.PADDLEOCR_API_URL
+        token = token or settings.PADDLEOCR_TOKEN
         if not api_url or not token:
             raise ValueError(
-                "PaddleOCR API URL and token must be provided either as "
-                "arguments or in configuration (PADDLEOCR_API_URL, PADDLEOCR_TOKEN)"
+                "PaddleOCR API URL and token must be configured "
+                "(PADDLEOCR_API_URL, PADDLEOCR_TOKEN)"
             )
-
-        _ocr_service = OCRService(api_url=api_url, token=token)
+        _ocr_service = OCRService(
+            api_url=api_url,
+            token=token,
+            model=settings.PADDLEOCR_MODEL,
+            poll_interval=settings.PADDLEOCR_POLL_INTERVAL,
+            job_timeout=settings.PADDLEOCR_JOB_TIMEOUT,
+            request_timeout=settings.PADDLEOCR_REQUEST_TIMEOUT,
+        )
 
     return _ocr_service

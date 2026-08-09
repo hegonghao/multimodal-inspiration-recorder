@@ -11,6 +11,7 @@
 - Flutter WorkManager 后台同步读取已保存的 API 地址，避免在服务器部署后把 `localhost` 当成后端。
 - Flutter 默认 API 地址不再写死开发者局域网 IP，可通过 `--dart-define=API_BASE_URL=...` 注入生产地址。
 - `backend/scripts/deployment_checklist.py` 现在检查实际使用的 `ALLOWED_*` 和 `NOTION_TOKEN`，并能找到根目录 Compose 文件。
+- PaddleOCR 已切换到 PP-OCRv6 异步 Jobs API，支持 multipart/URL 提交、任务轮询和 JSONL 解析；详见 `PADDLEOCR_V6_MIGRATION.md`。
 
 ## 当前仍需处理的高优先级事项
 
@@ -21,6 +22,7 @@
 5. **备份与恢复演练**：同时备份 `backend-data`、`backend-uploads`、`backend-logs`（日志可按保留策略清理），至少验证一次从备份恢复后健康检查和记录读取。
 6. **API 当前没有真正的用户认证/授权依赖**：记录、偏好和同步接口没有统一的 `Authorization` 校验。如果 8000 端口或反向代理对公网开放，任何人都可能读写数据；上线前至少加 API token/OIDC，并按用户隔离记录。
 7. **限流仍是单进程内存实现**：Compose 使用 4 个 Uvicorn worker 时，每个进程都有独立计数器，不能形成全局限流。高流量或公网场景应把计数迁移到 Redis，并在反向代理再加一层限流。
+8. **PaddleOCR Token 需要轮换**：本次真实验证使用了你提供的 Token，且旧配置 Token 返回 `401`。请在 PaddleOCR 控制台生成/确认新 Token 后，仅写入服务器 `.env`，不要提交仓库。
 
 ## 推荐部署命令
 

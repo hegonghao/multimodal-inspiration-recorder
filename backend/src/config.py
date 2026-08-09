@@ -90,6 +90,10 @@ class Settings(BaseSettings):
     # OCR (PaddleOCR-VL)
     PADDLEOCR_API_URL: Optional[str] = None
     PADDLEOCR_TOKEN: Optional[str] = None
+    PADDLEOCR_MODEL: str = "PP-OCRv6"
+    PADDLEOCR_POLL_INTERVAL: float = 5.0
+    PADDLEOCR_JOB_TIMEOUT: float = 300.0
+    PADDLEOCR_REQUEST_TIMEOUT: float = 60.0
 
     # Feature Flags
     ENABLE_VOICE_INPUT: bool = True

@@ -1,5 +1,8 @@
 # PaddleOCR 功能升级指南
 
+> 实现已更新为 PaddleOCR v6 异步 Jobs API。旧版同步版面解析示例不适用于当前
+> `backend/src/services/ocr_service.py`，请先阅读 `../PADDLEOCR_V6_MIGRATION.md`。
+
 ## 升级概述
 
 本次升级将图片识别模块从 Google Cloud Vision 迁移到 PaddleOCR-VL，并新增多项高级功能。

@@ -177,7 +177,7 @@ REDIS_PASSWORD=your_redis_password_here  # 修改为强密码
 DEEPGRAM_API_KEY=your_deepgram_api_key_here
 
 # PaddleOCR API - 图片 OCR
-PADDLEOCR_API_URL=https://z3pdt1z7xci7u2p4.aistudio-app.com/layout-parsing
+PADDLEOCR_API_URL=https://paddleocr.aistudio-app.com/api/v2/ocr/jobs
 PADDLEOCR_TOKEN=your_paddleocr_token_here
 
 # OpenRouter API - AI 处理
