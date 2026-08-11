@@ -186,7 +186,10 @@ class _RecordListPageState extends State<RecordListPage> {
                         ),
                         const SizedBox(height: 24),
                         ElevatedButton.icon(
-                          onPressed: () => provider.loadRecords(),
+                          onPressed: () => provider.loadRecords(
+                            inputType: _selectedInputType,
+                            triggerSync: false,
+                          ),
                           icon: const Icon(Icons.refresh),
                           label: const Text('重试'),
                         ),
@@ -225,7 +228,10 @@ class _RecordListPageState extends State<RecordListPage> {
                 }
 
                 return RefreshIndicator(
-                  onRefresh: () => provider.loadRecords(),
+                  onRefresh: () => provider.loadRecords(
+                    inputType: _selectedInputType,
+                    triggerSync: false,
+                  ),
                   child: ListView.builder(
                     padding: const EdgeInsets.all(16),
                     itemCount: provider.records.length,
@@ -279,6 +285,7 @@ class _RecordListPageState extends State<RecordListPage> {
                 });
                 context.read<InspirationProvider>().loadRecords(
                   inputType: value,
+                  triggerSync: false,
                 );
               },
             ),
@@ -290,6 +297,7 @@ class _RecordListPageState extends State<RecordListPage> {
             onPressed: () {
               context.read<InspirationProvider>().loadRecords(
                 inputType: _selectedInputType,
+                triggerSync: false,
               );
             },
             icon: const Icon(Icons.refresh),

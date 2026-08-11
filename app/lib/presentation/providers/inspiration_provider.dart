@@ -28,6 +28,7 @@ class InspirationProvider with ChangeNotifier {
 
   // State
   List<InspirationRecord> _records = [];
+  String? _activeInputType;
   bool _isLoading = false;
   bool _isCreating = false;
   String? _error;
@@ -107,6 +108,9 @@ class InspirationProvider with ChangeNotifier {
     bool triggerSync = true,
   }) async {
     try {
+      // Keep the list view's current filter when a background sync reloads
+      // records after fetching the authoritative backend state.
+      _activeInputType = inputType;
       _isLoading = true;
       _error = null;
       notifyListeners();
@@ -607,7 +611,10 @@ class InspirationProvider with ChangeNotifier {
           'Full sync completed: $updatedCount records synced, $errorCount errors');
 
       // Reload records from local database
-      await loadRecords(triggerSync: false);
+      await loadRecords(
+        inputType: _activeInputType,
+        triggerSync: false,
+      );
 
       _isLoading = false;
       notifyListeners();

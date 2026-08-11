@@ -4,7 +4,7 @@
 
 ## 发布新版本
 
-1. 修改 `app/pubspec.yaml` 的 `version`，例如 `1.0.1+2`。
+1. 修改 `app/pubspec.yaml` 的 `version`，例如 `1.0.2+3`。
 2. 构建 APK：
 
 ```powershell
@@ -16,8 +16,8 @@ flutter build apk --release
 4. 在服务器根目录 `.env` 设置：
 
 ```dotenv
-MOBILE_APP_VERSION=1.0.1
-MOBILE_APP_BUILD=2
+MOBILE_APP_VERSION=1.0.2
+MOBILE_APP_BUILD=3
 MOBILE_APP_APK_URL=https://example.com/downloads/app-release.apk
 MOBILE_APP_RELEASE_NOTES=修复同步和删除问题
 MOBILE_APP_FORCE_UPDATE=false
