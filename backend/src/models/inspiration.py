@@ -63,7 +63,7 @@ class InspirationRecord(Base):
     """
     InspirationRecord table stores user-generated inspirations
     from multiple input sources (voice, text, image) with AI-generated
-    metadata (categories, summaries) and sync tracking.
+    summaries and sync tracking.
     """
 
     __tablename__ = "inspiration_records"
@@ -76,9 +76,15 @@ class InspirationRecord(Base):
     content = Column(Text, nullable=False)  # Plain text content
     content_markdown = Column(Text, nullable=True)  # Markdown-formatted content (for OCR/PDF)
     input_type = Column(String(20), nullable=False, index=True)
+    source = Column(
+        String(100),
+        nullable=False,
+        default="灵感记录器",
+        server_default="灵感记录器",
+    )
 
-    # AI-generated metadata
-    category_tags = Column(Text, nullable=True)  # JSON array as string
+    # AI-generated content. category_tags is retained only for legacy rows.
+    category_tags = Column(Text, nullable=True)
     summary = Column(Text, nullable=True)
 
     # Notion sync tracking
@@ -187,8 +193,7 @@ class InspirationRecordUpdate(BaseModel):
 
     title: Optional[str] = Field(None, min_length=1, max_length=200)
     content: Optional[str] = Field(None, min_length=10, max_length=10000)
-    category_tags: Optional[List[str]] = Field(None, max_length=10)
-    summary: Optional[str] = Field(None, max_length=200)
+    summary: Optional[str] = Field(None, max_length=240)
     version: int = Field(..., ge=1, description="当前版本号(用于乐观锁)")
 
     @field_validator("content")
@@ -217,8 +222,8 @@ class InspirationRecordResponse(BaseModel):
     content: str
     content_markdown: Optional[str] = None  # Added: Markdown content
     input_type: InputType
-    category_tags: Optional[List[str]] = None
     summary: Optional[str] = None
+    source: str = "灵感记录器"
     notion_page_id: Optional[str] = None
     sync_status: SyncStatus
     created_at: datetime
@@ -233,18 +238,6 @@ class InspirationRecordResponse(BaseModel):
     ai_processing_status: AIProcessingStatus
     ai_error_message: Optional[str] = None
 
-    @field_validator("category_tags", mode="before")
-    @classmethod
-    def parse_category_tags_json(cls, v):
-        """Parse category_tags from JSON string if needed"""
-        if isinstance(v, str):
-            import json
-            try:
-                return json.loads(v)
-            except (json.JSONDecodeError, TypeError):
-                return None
-        return v
-
     model_config = {
         "from_attributes": True,
         "json_schema_extra": {
@@ -253,8 +246,8 @@ class InspirationRecordResponse(BaseModel):
                 "title": "AI产品创意:智能会议助手",
                 "content": "今天开会时想到可以做一个AI会议助手...",
                 "input_type": "voice",
-                "category_tags": ["产品创意", "技术灵感"],
                 "summary": "AI会议助手产品构想:实时转写+智能摘要+待办提醒",
+                "source": "灵感记录器",
                 "notion_page_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
                 "sync_status": 2,
                 "created_at": "2025-10-27T10:30:00Z",

@@ -5,7 +5,6 @@ import '../database.dart';
 /// Repository for managing InspirationRecord data access
 /// Implements offline-first pattern with local database as source of truth
 class InspirationRepository {
-
   InspirationRepository(this._database);
   final AppDatabase _database;
 
@@ -60,6 +59,7 @@ class InspirationRepository {
     required String title,
     required String content,
     required InputType inputType,
+    String source = '灵感记录器',
     String? audioFilePath,
     String? imageFilePath,
     double? ocrConfidence,
@@ -70,10 +70,12 @@ class InspirationRepository {
         title: title,
         content: content,
         inputType: inputType.value,
+        source: Value(source),
         audioFilePath: Value(audioFilePath),
         imageFilePath: Value(imageFilePath),
         ocrConfidence: Value(ocrConfidence),
-        syncStatus: Value(autoSync ? SyncStatus.pending.value : SyncStatus.synced.value),
+        syncStatus: Value(
+            autoSync ? SyncStatus.pending.value : SyncStatus.synced.value),
         createdAt: Value(DateTime.now()),
         updatedAt: Value(DateTime.now()),
       ),
@@ -96,7 +98,6 @@ class InspirationRepository {
     required int id,
     String? title,
     String? content,
-    String? categoryTags,
     String? summary,
     int? version,
     int? aiProcessingStatus,
@@ -111,13 +112,18 @@ class InspirationRepository {
         id: Value(id),
         title: title != null ? Value(title) : const Value.absent(),
         content: content != null ? Value(content) : const Value.absent(),
-        categoryTags: categoryTags != null ? Value(categoryTags) : const Value.absent(),
         summary: summary != null ? Value(summary) : const Value.absent(),
         version: version != null ? Value(version) : const Value.absent(),
-        aiProcessingStatus: aiProcessingStatus != null ? Value(aiProcessingStatus) : const Value.absent(),
-        aiErrorMessage: aiErrorMessage != null ? Value(aiErrorMessage) : const Value.absent(),
+        aiProcessingStatus: aiProcessingStatus != null
+            ? Value(aiProcessingStatus)
+            : const Value.absent(),
+        aiErrorMessage: aiErrorMessage != null
+            ? Value(aiErrorMessage)
+            : const Value.absent(),
         updatedAt: Value(DateTime.now()),
-        syncStatus: triggerSync ? const Value(0) : const Value.absent(), // Mark as pending if sync needed
+        syncStatus: triggerSync
+            ? const Value(0)
+            : const Value.absent(), // Mark as pending if sync needed
       ),
     );
 
@@ -150,17 +156,16 @@ class InspirationRepository {
   Future<bool> updateAIStatus({
     required int id,
     required AIProcessingStatus status,
-    String? categoryTags,
     String? summary,
     String? errorMessage,
   }) {
     return updateRecord(
       id: id,
       aiProcessingStatus: status.value,
-      categoryTags: categoryTags,
       summary: summary,
       aiErrorMessage: errorMessage,
-      triggerSync: status == AIProcessingStatus.completed, // Only sync when processing completes
+      triggerSync: status ==
+          AIProcessingStatus.completed, // Only sync when processing completes
     );
   }
 
@@ -177,7 +182,8 @@ class InspirationRepository {
       InspirationRecordsCompanion(
         id: Value(id),
         syncStatus: Value(status.value),
-        notionPageId: notionPageId != null ? Value(notionPageId) : const Value.absent(),
+        notionPageId:
+            notionPageId != null ? Value(notionPageId) : const Value.absent(),
         updatedAt: Value(DateTime.now()),
       ),
     );
@@ -229,9 +235,12 @@ class InspirationRepository {
   /// Get sync statistics
   Future<SyncStatistics> getSyncStatistics() async {
     final totalRecords = await getRecordCount();
-    final unsyncedRecords = await getAllRecords(syncStatus: SyncStatus.pending.value);
-    final syncedRecords = await getAllRecords(syncStatus: SyncStatus.synced.value);
-    final failedRecords = await getAllRecords(syncStatus: SyncStatus.failed.value);
+    final unsyncedRecords =
+        await getAllRecords(syncStatus: SyncStatus.pending.value);
+    final syncedRecords =
+        await getAllRecords(syncStatus: SyncStatus.synced.value);
+    final failedRecords =
+        await getAllRecords(syncStatus: SyncStatus.failed.value);
     final pendingSyncTasks = await getSyncQueueCount(status: 0);
 
     return SyncStatistics(
@@ -246,7 +255,6 @@ class InspirationRepository {
 
 /// Sync statistics data class
 class SyncStatistics {
-
   const SyncStatistics({
     required this.totalRecords,
     required this.unsyncedCount,

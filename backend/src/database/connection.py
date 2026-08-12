@@ -6,7 +6,7 @@ Database connection management
 import logging
 from typing import AsyncGenerator
 
-from sqlalchemy import event, pool
+from sqlalchemy import event, inspect, pool, text
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,
     AsyncSession,
@@ -24,6 +24,25 @@ engine: AsyncEngine | None = None
 
 # Async session factory
 AsyncSessionLocal: async_sessionmaker[AsyncSession] | None = None
+
+
+def _migrate_inspiration_records(sync_connection) -> None:
+    """Apply small additive migrations for deployments without Alembic."""
+    inspector = inspect(sync_connection)
+    if "inspiration_records" not in inspector.get_table_names():
+        return
+
+    columns = {
+        column["name"] for column in inspector.get_columns("inspiration_records")
+    }
+    if "source" not in columns:
+        sync_connection.execute(
+            text(
+                "ALTER TABLE inspiration_records "
+                "ADD COLUMN source VARCHAR(100) NOT NULL DEFAULT '灵感记录器'"
+            )
+        )
+        logger.info("Added inspiration_records.source column")
 
 
 def _configure_sqlite_pragma(dbapi_conn, connection_record) -> None:
@@ -157,6 +176,7 @@ async def init_db() -> None:
         # Create all tables
         async with engine.begin() as conn:
             await conn.run_sync(Base.metadata.create_all)
+            await conn.run_sync(_migrate_inspiration_records)
 
         logger.info("Database tables created successfully")
 

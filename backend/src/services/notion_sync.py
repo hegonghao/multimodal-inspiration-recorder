@@ -6,10 +6,8 @@ including rate limiting, retry logic, and error handling.
 """
 
 import asyncio
-import json
 import logging
-from datetime import datetime
-from typing import Optional, Dict, Any, List
+from typing import Any, Dict, Optional
 
 from notion_client import AsyncClient
 from notion_client.errors import APIResponseError
@@ -22,7 +20,7 @@ from tenacity import (
 )
 import structlog
 
-from src.models.inspiration import InspirationRecord, SyncStatus
+from src.models.inspiration import InspirationRecord
 from src.config import settings
 
 logger = structlog.get_logger(__name__)
@@ -43,15 +41,20 @@ class NotionConfig:
     MAX_RETRY_ATTEMPTS = 5
 
     # Default property names for Notion database
-    TITLE_PROPERTY = "名称1"  # Matches user's database
+    TITLE_PROPERTY = "总结"
     CONTENT_PROPERTY = "内容"
     INPUT_TYPE_PROPERTY = "输入方式"
-    CATEGORIES_PROPERTY = "分类"
-    TAGS_PROPERTY = "标签"
     SUMMARY_PROPERTY = "摘要"
-    CREATED_AT_PROPERTY = "创建日期"  # Matches user's database
-    UPDATED_AT_PROPERTY = "通知时间"  # Matches user's database
+    CREATED_AT_PROPERTY = "创建日期"
     SOURCE_PROPERTY = "来源"
+
+    PROPERTY_TYPES = {
+        CONTENT_PROPERTY: "rich_text",
+        INPUT_TYPE_PROPERTY: "select",
+        SUMMARY_PROPERTY: "rich_text",
+        CREATED_AT_PROPERTY: "date",
+        SOURCE_PROPERTY: "select",
+    }
 
 
 # ==================== Notion API Client ====================
@@ -67,6 +70,8 @@ class NotionSyncService:
     - Rich property mapping (text, select, multi-select, date, etc.)
     - Error handling and logging
     """
+
+    _schema_ready_databases: set[str] = set()
 
     def __init__(
         self,
@@ -98,6 +103,109 @@ class NotionSyncService:
 
         self.client = AsyncClient(auth=self.notion_token)
         self.last_request_time = 0.0
+
+    async def ensure_database_schema(self) -> bool:
+        """Reconcile the target Notion database to the six public columns."""
+        if self.database_id in self._schema_ready_databases:
+            return True
+
+        async def retrieve_operation():
+            return await self.client.databases.retrieve(database_id=self.database_id)
+
+        try:
+            database = await self._retry_with_backoff(
+                operation_name="retrieve_database_schema",
+                operation_func=retrieve_operation,
+            )
+            properties = database.get("properties", {})
+            title_name = next(
+                (
+                    name
+                    for name, definition in properties.items()
+                    if definition.get("type") == "title"
+                ),
+                None,
+            )
+            if not title_name:
+                logger.error("notion_title_property_missing")
+                return False
+
+            desired_names = {
+                NotionConfig.TITLE_PROPERTY,
+                *NotionConfig.PROPERTY_TYPES.keys(),
+            }
+            delete_updates: Dict[str, Any] = {}
+            recreate_names: set[str] = set()
+
+            for name, definition in properties.items():
+                property_type = definition.get("type")
+                if property_type == "title":
+                    continue
+                expected_type = NotionConfig.PROPERTY_TYPES.get(name)
+                if name not in desired_names:
+                    delete_updates[name] = None
+                elif expected_type != property_type:
+                    delete_updates[name] = None
+                    recreate_names.add(name)
+
+            if delete_updates:
+                async def delete_operation():
+                    return await self.client.databases.update(
+                        database_id=self.database_id,
+                        properties=delete_updates,
+                    )
+
+                await self._retry_with_backoff(
+                    operation_name="remove_extra_database_properties",
+                    operation_func=delete_operation,
+                )
+
+            if title_name != NotionConfig.TITLE_PROPERTY:
+                async def rename_title_operation():
+                    return await self.client.databases.update(
+                        database_id=self.database_id,
+                        properties={
+                            title_name: {"name": NotionConfig.TITLE_PROPERTY}
+                        },
+                    )
+
+                await self._retry_with_backoff(
+                    operation_name="rename_database_title_property",
+                    operation_func=rename_title_operation,
+                )
+
+            create_updates: Dict[str, Any] = {}
+            for name, property_type in NotionConfig.PROPERTY_TYPES.items():
+                if name not in properties or name in recreate_names:
+                    create_updates[name] = {property_type: {}}
+
+            if create_updates:
+                async def create_operation():
+                    return await self.client.databases.update(
+                        database_id=self.database_id,
+                        properties=create_updates,
+                    )
+
+                await self._retry_with_backoff(
+                    operation_name="create_required_database_properties",
+                    operation_func=create_operation,
+                )
+
+            self._schema_ready_databases.add(self.database_id)
+            logger.info(
+                "notion_database_schema_reconciled",
+                database_id=self.database_id,
+                properties=sorted(desired_names),
+            )
+            return True
+        except APIResponseError as e:
+            logger.error(
+                "notion_database_schema_reconcile_failed",
+                database_id=self.database_id,
+                status_code=e.status,
+                error=str(e),
+            )
+            return False
 
     async def _rate_limit(self):
         """Apply rate limiting delay (3 req/s = 400ms between requests)"""
@@ -177,12 +285,7 @@ class NotionSyncService:
         """
         Build Notion page properties from InspirationRecord.
 
-        Maps InspirationRecord fields to Notion property types:
-        - title: Title property
-        - content: Rich text property
-        - input_type: Select property
-        - categories: Multi-select property
-        - dates: Date properties
+        The public database shape is limited to six fields.
 
         Args:
             record: InspirationRecord to convert
@@ -217,94 +320,19 @@ class NotionSyncService:
             NotionConfig.CREATED_AT_PROPERTY: {
                 "date": {"start": record.created_at.isoformat()}
             },
-            # Updated date
-            NotionConfig.UPDATED_AT_PROPERTY: {
-                "date": {"start": record.updated_at.isoformat()}
-            },
             # Source marker
             NotionConfig.SOURCE_PROPERTY: {
-                "select": {"name": "灵感记录器"}
+                "select": {"name": record.source or "灵感记录器"}
+            },
+            # Empty rich_text clears a previous abstract during updates.
+            NotionConfig.SUMMARY_PROPERTY: {
+                "rich_text": (
+                    [{"text": {"content": record.summary[:2000]}}]
+                    if record.summary
+                    else []
+                )
             },
         }
-
-        # Add category tags as multi-select if available
-        if record.category_tags:
-            logger.info(
-                "processing_category_tags",
-                record_id=record.id,
-                category_tags=record.category_tags[:100] if record.category_tags else None,
-                category_tags_type=type(record.category_tags).__name__,
-            )
-            try:
-                # Parse category_tags (stored as JSON string or comma-separated)
-                if isinstance(record.category_tags, str):
-                    # Try JSON first
-                    try:
-                        categories = json.loads(record.category_tags)
-                        logger.info(
-                            "parsed_category_tags_as_json",
-                            record_id=record.id,
-                            categories=categories,
-                        )
-                    except json.JSONDecodeError:
-                        # Fall back to comma-separated
-                        categories = [tag.strip() for tag in record.category_tags.split(',')]
-                        logger.debug(
-                            "parsed_category_tags_as_csv",
-                            record_id=record.id,
-                            categories=categories,
-                        )
-                elif isinstance(record.category_tags, list):
-                    categories = record.category_tags
-                    logger.debug(
-                        "category_tags_already_list",
-                        record_id=record.id,
-                        categories=categories,
-                    )
-                else:
-                    categories = []
-                    logger.warning(
-                        "category_tags_unexpected_type",
-                        record_id=record.id,
-                        type=type(record.category_tags).__name__,
-                    )
-
-                # Limit to 5 tags and create multi-select property
-                if categories:
-                    properties[NotionConfig.CATEGORIES_PROPERTY] = {
-                        "multi_select": [
-                            {"name": cat[:100]} for cat in categories[:5] if cat
-                        ]
-                    }
-                    logger.info(
-                        "added_category_tags_to_properties",
-                        record_id=record.id,
-                        categories_count=len(categories[:5]),
-                        categories=categories[:5],
-                    )
-                else:
-                    logger.warning(
-                        "category_tags_empty_after_parse",
-                        record_id=record.id,
-                    )
-            except Exception as e:
-                logger.warning(
-                    "failed_to_parse_category_tags",
-                    record_id=record.id,
-                    error=str(e),
-                )
-
-        # Add summary as rich text if available
-        if record.summary:
-            properties[NotionConfig.SUMMARY_PROPERTY] = {
-                "rich_text": [
-                    {
-                        "text": {
-                            "content": record.summary[:2000]
-                        }
-                    }
-                ]
-            }
 
         return properties
 
@@ -314,6 +342,7 @@ class NotionSyncService:
             "voice": "语音",
             "text": "文字",
             "image": "图片",
+            "pdf": "PDF",
         }
         return mapping.get(input_type, input_type)
 
@@ -339,6 +368,9 @@ class NotionSyncService:
             record_id=record.id,
             title=record.title[:50],
         )
+
+        if not await self.ensure_database_schema():
+            return None
 
         properties = self._build_page_properties(record)
 
@@ -392,6 +424,9 @@ class NotionSyncService:
             record_id=record.id,
             notion_page_id=notion_page_id,
         )
+
+        if not await self.ensure_database_schema():
+            return False
 
         properties = self._build_page_properties(record)
 

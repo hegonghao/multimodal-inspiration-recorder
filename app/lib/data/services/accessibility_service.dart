@@ -4,7 +4,8 @@ import 'package:flutter/semantics.dart';
 /// Accessibility service for managing app-wide accessibility features
 /// Provides screen reader support, semantic labels, and accessibility announcements
 class AccessibilityService {
-  static final AccessibilityService _instance = AccessibilityService._internal();
+  static final AccessibilityService _instance =
+      AccessibilityService._internal();
   factory AccessibilityService() => _instance;
   AccessibilityService._internal();
 
@@ -21,7 +22,8 @@ class AccessibilityService {
   Future<void> initialize() async {
     // Check initial screen reader status
     _isScreenReaderEnabled = await _checkScreenReaderStatus();
-    debugPrint('Accessibility service initialized. Screen reader: $_isScreenReaderEnabled');
+    debugPrint(
+        'Accessibility service initialized. Screen reader: $_isScreenReaderEnabled');
   }
 
   /// Check if screen reader is enabled on the device
@@ -168,7 +170,8 @@ class AccessibilityService {
 
   /// Check if a size meets accessibility touch target guidelines
   bool isTouchTargetSizeValid(Size size) {
-    return size.width >= minTouchTargetSize && size.height >= minTouchTargetSize;
+    return size.width >= minTouchTargetSize &&
+        size.height >= minTouchTargetSize;
   }
 
   /// Get recommended touch target padding
@@ -197,7 +200,8 @@ class AccessibilityService {
   }
 
   /// Check if color contrast meets WCAG AA standards
-  bool hasValidContrast(Color foreground, Color background, {bool isLargeText = false}) {
+  bool hasValidContrast(Color foreground, Color background,
+      {bool isLargeText = false}) {
     final contrast = getContrastRatio(foreground, background);
     final requiredContrast = isLargeText ? 3.0 : 4.5;
 
@@ -232,7 +236,8 @@ class AccessibilityService {
 
   /// Check if high contrast mode is enabled
   bool isHighContrastEnabled() {
-    return SemanticsBinding.instance?.accessibilityFeatures.highContrast ?? false;
+    return SemanticsBinding.instance?.accessibilityFeatures.highContrast ??
+        false;
   }
 
   /// Check if bold text is enabled
@@ -242,7 +247,8 @@ class AccessibilityService {
 
   /// Check if reduce motion is enabled
   bool isReduceMotionEnabled() {
-    return SemanticsBinding.instance?.accessibilityFeatures.disableAnimations ?? false;
+    return SemanticsBinding.instance?.accessibilityFeatures.disableAnimations ??
+        false;
   }
 
   // ==================== Voice Input Accessibility ====================
@@ -319,7 +325,7 @@ class AccessibilityService {
 
   /// Get hint for text input
   String getTextInputHint() {
-    return '输入您的灵感内容，至少10个字符，系统将自动生成分类和摘要';
+    return '输入您的灵感内容，至少10个字符，系统将自动生成总结和摘要';
   }
 
   // ==================== Sync Accessibility ====================

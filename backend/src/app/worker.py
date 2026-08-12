@@ -674,6 +674,22 @@ async def scheduled_notion_deletion_check(ctx: dict) -> dict:
 async def startup(ctx: dict) -> None:
     """Worker startup hook"""
     logger.info("arq_worker_starting")
+    session: Optional[AsyncSession] = None
+    notion_service: Optional[NotionSyncService] = None
+    try:
+        session = await get_db_session()
+        notion_service = await _get_notion_service_for_worker(session)
+        if notion_service:
+            schema_ready = await notion_service.ensure_database_schema()
+            if not schema_ready:
+                logger.warning("notion_schema_reconcile_skipped_or_failed")
+    except Exception as e:
+        logger.warning("notion_schema_reconcile_startup_failed", error=str(e))
+    finally:
+        if notion_service:
+            await notion_service.close()
+        if session:
+            await session.close()
 
 
 async def shutdown(ctx: dict) -> None:

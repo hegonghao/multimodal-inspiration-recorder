@@ -19,7 +19,6 @@ from src.models.inspiration import (
     InspirationRecordUpdate,
     InspirationRecordResponse,
     InspirationRecordListResponse,
-    serialize_category_tags,
 )
 from src.models.sync_queue import SyncQueue, SyncOperation
 from src.models.user_preferences import UserPreferences
@@ -603,9 +602,7 @@ async def create_record_with_file(
             )
 
         # AI processing (if enabled)
-        categories = []
         summary = ""
-        ai_metadata = {}
         ai_processing_status = 0  # Default: PENDING
         ai_error_message = None
 
@@ -616,14 +613,7 @@ async def create_record_with_file(
                 # Use Markdown content for AI processing if available (better structure)
                 content_for_ai = content_markdown if content_markdown else extracted_content
 
-                # Generate title
-                title = await ai_processor.generate_title(
-                    content_for_ai,
-                    max_length=50,
-                    language=language
-                )
-
-                # Process content for categories and summary
+                # Generate the concise summary/title and abstract in one call.
                 ai_result = await ai_processor.process_content(
                     content_for_ai,
                     input_type=input_type,
@@ -631,17 +621,12 @@ async def create_record_with_file(
                     metadata=processing_metadata
                 )
 
-                categories = ai_result["categories"]
+                title = ai_result["title"]
                 summary = ai_result["summary"]
-                ai_metadata = {
-                    "ai_confidence": ai_result["confidence"],
-                    "sentiment": ai_result["sentiment"],
-                    "keywords": ai_result["keywords"],
-                }
 
                 # Mark AI processing as completed
                 ai_processing_status = 2  # COMPLETED
-                logger.info(f"AI processing completed: categories={categories}")
+                logger.info("AI processing completed")
 
             except Exception as e:
                 logger.error(f"AI processing failed: {e}")
@@ -673,7 +658,7 @@ async def create_record_with_file(
             content_markdown=content_markdown,  # Save Markdown content
             summary=summary if summary else None,
             input_type=input_type,
-            category_tags=serialize_category_tags(categories) if categories else None,
+            source="灵感记录器",
             sync_status=0,  # Not synced
             ai_processing_status=ai_processing_status,
             ai_error_message=ai_error_message,

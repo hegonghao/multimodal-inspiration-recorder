@@ -2,9 +2,8 @@ import 'dart:io';
 
 import 'package:drift/drift.dart';
 import 'package:drift/native.dart';
-import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as p;
-import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:path_provider/path_provider.dart';
 
 part 'database.g.dart';
 
@@ -17,6 +16,8 @@ class InspirationRecords extends Table {
   TextColumn get title => text().withLength(min: 1, max: 200)();
   TextColumn get content => text()();
   TextColumn get inputType => text().withLength(min: 1, max: 20)();
+  TextColumn get source => text().withDefault(const Constant('灵感记录器'))();
+  // Retained for compatibility with existing local databases; no longer used.
   TextColumn get categoryTags => text().nullable()();
   TextColumn get summary => text().nullable()();
   TextColumn get notionPageId =>
@@ -92,7 +93,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase() : super(_openConnection());
 
   @override
-  int get schemaVersion => 5;
+  int get schemaVersion => 6;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -177,6 +178,11 @@ class AppDatabase extends _$AppDatabase {
                   deepgram_api_key = ''
               WHERE id = 1
             ''');
+          }
+
+          // Version 5 -> 6: Add the public record source field.
+          if (from < 6) {
+            await m.addColumn(inspirationRecords, inspirationRecords.source);
           }
         },
       );

@@ -1,4 +1,3 @@
-import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
@@ -36,36 +35,6 @@ class _RecordListPageState extends State<RecordListPage> {
     super.dispose();
   }
 
-  /// Parse category tags from JSON string or comma-separated string
-  List<String> _parseCategoryTags(String? tagsStr) {
-    if (tagsStr == null || tagsStr.isEmpty) {
-      print('DEBUG: Tags string is null or empty');
-      return [];
-    }
-
-    print('DEBUG: Parsing tags: $tagsStr');
-
-    try {
-      // Try to parse as JSON array
-      final decoded = jsonDecode(tagsStr);
-      print('DEBUG: Decoded JSON: $decoded (type: ${decoded.runtimeType})');
-      if (decoded is List) {
-        final result = decoded.map((e) => e.toString()).toList();
-        print('DEBUG: Parsed tags result: $result');
-        return result;
-      }
-    } catch (e) {
-      print('DEBUG: JSON parse failed: $e, trying comma-separated');
-      // If JSON parse fails, try comma-separated
-      final result = tagsStr.split(',').map((e) => e.trim()).where((e) => e.isNotEmpty).toList();
-      print('DEBUG: Comma-separated result: $result');
-      return result;
-    }
-
-    print('DEBUG: Returning empty list');
-    return [];
-  }
-
   /// Sync all records from backend
   Future<void> _syncAllFromBackend(BuildContext context) async {
     // Show confirmation dialog
@@ -73,7 +42,7 @@ class _RecordListPageState extends State<RecordListPage> {
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('同步所有记录'),
-        content: const Text('这将从后端服务器重新下载所有记录，包括AI生成的标签和摘要。是否继续？'),
+        content: const Text('这将从后端服务器重新下载所有记录，包括AI生成的总结和摘要。是否继续？'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
@@ -211,16 +180,18 @@ class _RecordListPageState extends State<RecordListPage> {
                         const SizedBox(height: 16),
                         Text(
                           '暂无记录',
-                          style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                            color: Colors.grey[600],
-                          ),
+                          style:
+                              Theme.of(context).textTheme.titleLarge?.copyWith(
+                                    color: Colors.grey[600],
+                                  ),
                         ),
                         const SizedBox(height: 8),
                         Text(
                           '开始记录您的灵感吧',
-                          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                            color: Colors.grey[500],
-                          ),
+                          style:
+                              Theme.of(context).textTheme.bodyMedium?.copyWith(
+                                    color: Colors.grey[500],
+                                  ),
                         ),
                       ],
                     ),
@@ -271,7 +242,8 @@ class _RecordListPageState extends State<RecordListPage> {
               decoration: const InputDecoration(
                 labelText: '输入方式',
                 border: OutlineInputBorder(),
-                contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                contentPadding:
+                    EdgeInsets.symmetric(horizontal: 12, vertical: 8),
               ),
               items: const [
                 DropdownMenuItem(value: null, child: Text('全部')),
@@ -284,9 +256,9 @@ class _RecordListPageState extends State<RecordListPage> {
                   _selectedInputType = value;
                 });
                 context.read<InspirationProvider>().loadRecords(
-                  inputType: value,
-                  triggerSync: false,
-                );
+                      inputType: value,
+                      triggerSync: false,
+                    );
               },
             ),
           ),
@@ -296,9 +268,9 @@ class _RecordListPageState extends State<RecordListPage> {
           IconButton(
             onPressed: () {
               context.read<InspirationProvider>().loadRecords(
-                inputType: _selectedInputType,
-                triggerSync: false,
-              );
+                    inputType: _selectedInputType,
+                    triggerSync: false,
+                  );
             },
             icon: const Icon(Icons.refresh),
             tooltip: '刷新',
@@ -335,25 +307,37 @@ class _RecordListPageState extends State<RecordListPage> {
                   Text(
                     dateFormat.format(record.createdAt),
                     style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      color: Colors.grey[600],
-                    ),
+                          color: Colors.grey[600],
+                        ),
                   ),
                 ],
               ),
               const SizedBox(height: 12),
 
-              // Title
+              Text(
+                '总结',
+                style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                      color: Colors.grey[600],
+                    ),
+              ),
+              const SizedBox(height: 4),
               Text(
                 record.title,
                 style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                  fontWeight: FontWeight.bold,
-                ),
+                      fontWeight: FontWeight.bold,
+                    ),
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
               ),
               const SizedBox(height: 8),
 
-              // Content preview
+              Text(
+                '内容',
+                style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                      color: Colors.grey[600],
+                    ),
+              ),
+              const SizedBox(height: 4),
               Text(
                 record.content,
                 style: Theme.of(context).textTheme.bodyMedium,
@@ -361,42 +345,42 @@ class _RecordListPageState extends State<RecordListPage> {
                 overflow: TextOverflow.ellipsis,
               ),
 
-              // Tags and summary
-              if (record.categoryTags != null || record.summary != null) ...[
+              if (record.summary != null && record.summary!.isNotEmpty) ...[
                 const SizedBox(height: 12),
-                Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  children: [
-                    if (record.categoryTags != null)
-                      ..._parseCategoryTags(record.categoryTags).map(
-                        (tag) {
-                          print('DEBUG: Creating chip for tag: "$tag" (length: ${tag.length})');
-                          return Chip(
-                            label: Text(
-                              tag.trim(),
-                              style: TextStyle(
-                                fontSize: 12,
-                                color: Colors.black87,
-                                fontWeight: FontWeight.w500,
-                              ),
-                            ),
-                            backgroundColor: Colors.blue.shade50,
-                            visualDensity: VisualDensity.compact,
-                          );
-                        },
+                Text(
+                  '摘要',
+                  style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                        color: Colors.grey[600],
                       ),
-                  ],
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  record.summary!,
+                  style: Theme.of(context).textTheme.bodySmall,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
                 ),
               ],
 
               // Action buttons
               const SizedBox(height: 8),
               Row(
-                mainAxisAlignment: MainAxisAlignment.end,
                 children: [
+                  Icon(Icons.source_outlined,
+                      size: 16, color: Colors.grey[600]),
+                  const SizedBox(width: 4),
+                  Expanded(
+                    child: Text(
+                      record.source,
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                            color: Colors.grey[600],
+                          ),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
                   TextButton.icon(
-                    onPressed: () => _showDeleteConfirmation(context, record, provider),
+                    onPressed: () =>
+                        _showDeleteConfirmation(context, record, provider),
                     icon: const Icon(Icons.delete_outline, size: 18),
                     label: const Text('删除'),
                     style: TextButton.styleFrom(
@@ -543,23 +527,39 @@ class _RecordListPageState extends State<RecordListPage> {
                           _buildInputTypeChip(record.inputType),
                           const Spacer(),
                           Text(
-                            DateFormat('yyyy-MM-dd HH:mm').format(record.createdAt),
+                            DateFormat('yyyy-MM-dd HH:mm')
+                                .format(record.createdAt),
                             style: Theme.of(context).textTheme.bodySmall,
                           ),
                         ],
                       ),
                       const SizedBox(height: 16),
 
-                      // Title
+                      Text(
+                        '总结',
+                        style:
+                            Theme.of(context).textTheme.titleMedium?.copyWith(
+                                  fontWeight: FontWeight.bold,
+                                ),
+                      ),
+                      const SizedBox(height: 8),
                       Text(
                         record.title,
-                        style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                          fontWeight: FontWeight.bold,
-                        ),
+                        style:
+                            Theme.of(context).textTheme.headlineSmall?.copyWith(
+                                  fontWeight: FontWeight.bold,
+                                ),
                       ),
                       const SizedBox(height: 16),
 
-                      // Content
+                      Text(
+                        '内容',
+                        style:
+                            Theme.of(context).textTheme.titleMedium?.copyWith(
+                                  fontWeight: FontWeight.bold,
+                                ),
+                      ),
+                      const SizedBox(height: 8),
                       Container(
                         padding: const EdgeInsets.all(16),
                         decoration: BoxDecoration(
@@ -580,9 +580,10 @@ class _RecordListPageState extends State<RecordListPage> {
                         const SizedBox(height: 16),
                         Text(
                           '摘要',
-                          style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                            fontWeight: FontWeight.bold,
-                          ),
+                          style:
+                              Theme.of(context).textTheme.titleMedium?.copyWith(
+                                    fontWeight: FontWeight.bold,
+                                  ),
                         ),
                         const SizedBox(height: 8),
                         Container(
@@ -598,36 +599,16 @@ class _RecordListPageState extends State<RecordListPage> {
                         ),
                       ],
 
-                      // Tags
-                      if (record.categoryTags != null) ...[
-                        const SizedBox(height: 16),
-                        Text(
-                          '标签',
-                          style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                        const SizedBox(height: 8),
-                        Wrap(
-                          spacing: 8,
-                          runSpacing: 8,
-                          children: _parseCategoryTags(record.categoryTags).map(
-                            (tag) {
-                              print('DEBUG: Creating detail chip for tag: "$tag"');
-                              return Chip(
-                                label: Text(
-                                  tag.trim(),
-                                  style: TextStyle(
-                                    color: Colors.black87,
-                                    fontWeight: FontWeight.w500,
-                                  ),
+                      const SizedBox(height: 16),
+                      Text(
+                        '来源',
+                        style:
+                            Theme.of(context).textTheme.titleMedium?.copyWith(
+                                  fontWeight: FontWeight.bold,
                                 ),
-                                backgroundColor: Colors.blue.shade50,
-                              );
-                            },
-                          ).toList(),
-                        ),
-                      ],
+                      ),
+                      const SizedBox(height: 8),
+                      Text(record.source),
 
                       // Sync status
                       const SizedBox(height: 16),
@@ -635,9 +616,12 @@ class _RecordListPageState extends State<RecordListPage> {
                         children: [
                           Text(
                             '同步状态',
-                            style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                              fontWeight: FontWeight.bold,
-                            ),
+                            style: Theme.of(context)
+                                .textTheme
+                                .titleMedium
+                                ?.copyWith(
+                                  fontWeight: FontWeight.bold,
+                                ),
                           ),
                           const SizedBox(width: 8),
                           _buildSyncStatusIcon(record.syncStatus),
@@ -679,7 +663,8 @@ class _RecordListPageState extends State<RecordListPage> {
                 ScaffoldMessenger.of(context).showSnackBar(
                   SnackBar(
                     content: Text(success ? '删除成功' : '删除失败'),
-                    backgroundColor: success ? AppColors.success : AppColors.error,
+                    backgroundColor:
+                        success ? AppColors.success : AppColors.error,
                   ),
                 );
               }

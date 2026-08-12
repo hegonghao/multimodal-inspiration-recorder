@@ -1,7 +1,6 @@
-/// Text input page for direct text entry with AI categorization
+/// Text input page for direct text entry with AI summarization.
 library;
 
-import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -16,7 +15,7 @@ import '../widgets/common/loading_indicator.dart';
 /// Features:
 /// - Rich text editing with validation
 /// - Auto-save after user stops typing
-/// - AI-powered categorization and summarization
+/// - AI-powered summary and abstract generation
 /// - Character counter with validation feedback
 /// - Save/discard actions
 ///
@@ -35,9 +34,8 @@ class _TextInputPageState extends State<TextInputPage> {
   String? _errorMessage;
 
   // AI processing results
-  List<String>? _categories;
+  String? _generatedTitle;
   String? _summary;
-  String? _sentiment;
 
   @override
   Widget build(BuildContext context) {
@@ -78,7 +76,7 @@ class _TextInputPageState extends State<TextInputPage> {
                         child: TextEditorWidget(
                           initialText: _currentText,
                           onTextChanged: _onTextChanged,
-                          placeholder: '输入您的灵感、想法或笔记...\n\n系统将自动分析内容并生成分类标签和摘要。',
+                          placeholder: '输入您的灵感、想法或笔记...\n\n系统将自动生成总结和摘要。',
                         ),
                       ),
 
@@ -135,7 +133,7 @@ class _TextInputPageState extends State<TextInputPage> {
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  '输入至少10个字符，系统将自动分类和摘要',
+                  '输入至少10个字符，系统将自动生成总结和摘要',
                   style: Theme.of(context).textTheme.bodySmall?.copyWith(
                         color: AppColors.textActive.withOpacity(0.8),
                       ),
@@ -158,7 +156,7 @@ class _TextInputPageState extends State<TextInputPage> {
       child: LoadingIndicator(
         style: LoadingStyle.dots,
         size: 40.0,
-        message: '正在分析内容...\n正在生成分类标签和摘要',
+        message: '正在分析内容...\n正在生成总结和摘要',
       ),
     );
   }
@@ -196,64 +194,40 @@ class _TextInputPageState extends State<TextInputPage> {
 
           const SizedBox(height: UIConstants.paddingSmall),
 
-          // Categories
-          if (_categories != null && _categories!.isNotEmpty) ...[
+          if (_generatedTitle != null && _generatedTitle!.isNotEmpty) ...[
             Text(
-              '分类标签',
+              '总结',
               style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                    color: Theme.of(context).colorScheme.onSurface.withOpacity(0.6),
+                    color: Theme.of(context)
+                        .colorScheme
+                        .onSurface
+                        .withOpacity(0.6),
                   ),
             ),
             const SizedBox(height: 4),
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: _categories!.map((category) {
-                final colorIndex = _categories!.indexOf(category) %
-                    AppColors.categoryColors.length;
-                return Chip(
-                  label: Text(category),
-                  backgroundColor: AppColors.categoryColors[colorIndex],
-                  labelStyle: Theme.of(context).textTheme.labelMedium,
-                );
-              }).toList(),
+            Text(
+              _generatedTitle!,
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                    fontWeight: FontWeight.w600,
+                  ),
             ),
             const SizedBox(height: UIConstants.paddingSmall),
           ],
 
-          // Summary
           if (_summary != null && _summary!.isNotEmpty) ...[
             Text(
-              '智能摘要',
+              '摘要',
               style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                    color: Theme.of(context).colorScheme.onSurface.withOpacity(0.6),
+                    color: Theme.of(context)
+                        .colorScheme
+                        .onSurface
+                        .withOpacity(0.6),
                   ),
             ),
             const SizedBox(height: 4),
             Text(
               _summary!,
               style: Theme.of(context).textTheme.bodyMedium,
-            ),
-          ],
-
-          // Sentiment (if available)
-          if (_sentiment != null && _sentiment!.isNotEmpty) ...[
-            const SizedBox(height: UIConstants.paddingSmall),
-            Row(
-              children: [
-                Icon(
-                  _getSentimentIcon(),
-                  size: UIConstants.iconSizeSmall,
-                  color: _getSentimentColor(),
-                ),
-                const SizedBox(width: 4),
-                Text(
-                  '情感: $_sentiment',
-                  style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                        color: _getSentimentColor(),
-                      ),
-                ),
-              ],
             ),
           ],
         ],
@@ -304,8 +278,9 @@ class _TextInputPageState extends State<TextInputPage> {
 
   Widget _buildActionButtons() {
     final provider = context.watch<InspirationProvider>();
-    final canSave = _currentText.trim().length >= TextConstants.minContentLength &&
-        _currentText.trim().length <= TextConstants.maxContentLength;
+    final canSave =
+        _currentText.trim().length >= TextConstants.minContentLength &&
+            _currentText.trim().length <= TextConstants.maxContentLength;
 
     return Row(
       children: [
@@ -353,13 +328,12 @@ class _TextInputPageState extends State<TextInputPage> {
   // Event handlers
   void _onTextChanged(String text) {
     setState(() {
+      final contentChanged = text != _currentText;
       _currentText = text;
-      // Reset results when text changes significantly
-      if (_hasProcessedResult && text.length < _currentText.length - 10) {
+      if (_hasProcessedResult && contentChanged) {
         _hasProcessedResult = false;
-        _categories = null;
+        _generatedTitle = null;
         _summary = null;
-        _sentiment = null;
       }
     });
   }
@@ -405,18 +379,17 @@ class _TextInputPageState extends State<TextInputPage> {
             if (aiStatus == 2) {
               // AI processing completed successfully
               _hasProcessedResult = true;
-              _categories = _parseCategoryTags(record.categoryTags);
+              _generatedTitle = record.title;
               _summary = record.summary;
-              // Sentiment analysis not implemented yet
-              // _sentiment = record.metadata?['sentiment'] as String?;
             } else if (aiStatus == 1) {
               // AI processing failed
               _hasProcessedResult = false;
-              _errorMessage = 'AI分析失败: ${record.aiErrorMessage ?? "未知错误"}。记录已保存，但未生成分类标签和摘要。';
+              _errorMessage =
+                  'AI分析失败: ${record.aiErrorMessage ?? "未知错误"}。记录已保存，但未生成总结和摘要。';
             } else {
               // AI processing still pending (shouldn't happen after sync)
               _hasProcessedResult = false;
-              _errorMessage = 'AI分析超时。记录已保存，但分类标签和摘要生成可能需要稍后查看。';
+              _errorMessage = 'AI分析超时。记录已保存，总结和摘要可能需要稍后查看。';
             }
           }
         });
@@ -428,9 +401,7 @@ class _TextInputPageState extends State<TextInputPage> {
 
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: Text(aiSucceeded
-                  ? '✓ 记录已保存并分析完成'
-                  : '✓ 记录已保存（AI分析未完成）'),
+              content: Text(aiSucceeded ? '✓ 记录已保存并分析完成' : '✓ 记录已保存（AI分析未完成）'),
               backgroundColor: aiSucceeded
                   ? Theme.of(context).colorScheme.primary
                   : Theme.of(context).colorScheme.error,
@@ -526,7 +497,7 @@ class _TextInputPageState extends State<TextInputPage> {
               _buildHelpItem(
                 icon: Icons.auto_awesome_rounded,
                 title: 'AI 分析',
-                description: '系统自动生成分类标签和摘要，帮助您整理内容',
+                description: '系统自动生成简短总结和摘要，帮助您整理内容',
               ),
               const SizedBox(height: 12),
               _buildHelpItem(
@@ -587,47 +558,5 @@ class _TextInputPageState extends State<TextInputPage> {
         ),
       ],
     );
-  }
-
-  /// Parse category tags from JSON string or comma-separated string
-  List<String> _parseCategoryTags(String? tagsStr) {
-    if (tagsStr == null || tagsStr.isEmpty) {
-      return [];
-    }
-
-    try {
-      // Try to parse as JSON array
-      final decoded = jsonDecode(tagsStr);
-      if (decoded is List) {
-        return decoded.map((e) => e.toString()).toList();
-      }
-    } catch (e) {
-      // If JSON parse fails, try comma-separated
-      return tagsStr.split(',').map((e) => e.trim()).where((e) => e.isNotEmpty).toList();
-    }
-
-    return [];
-  }
-
-  IconData _getSentimentIcon() {
-    switch (_sentiment?.toLowerCase()) {
-      case 'positive':
-        return Icons.sentiment_satisfied_rounded;
-      case 'negative':
-        return Icons.sentiment_dissatisfied_rounded;
-      default:
-        return Icons.sentiment_neutral_rounded;
-    }
-  }
-
-  Color _getSentimentColor() {
-    switch (_sentiment?.toLowerCase()) {
-      case 'positive':
-        return Colors.green;
-      case 'negative':
-        return Colors.red;
-      default:
-        return Colors.grey;
-    }
   }
 }

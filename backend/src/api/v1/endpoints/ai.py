@@ -1,12 +1,11 @@
 """
 AI Processing API Endpoints
 
-Handles LLM-based classification and summarization
+Handles LLM-based summary and abstract generation.
 """
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
-from typing import List, Dict, Any
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
@@ -68,18 +67,6 @@ async def get_ai_processor_from_prefs(db: AsyncSession) -> AIProcessor:
     )
 
 
-class ClassifyRequest(BaseModel):
-    content: str = Field(..., min_length=10, max_length=10000)
-    language: str = Field("zh", pattern="^(zh|en)$")
-
-
-class ClassifyResponse(BaseModel):
-    categories: List[str]
-    keywords: List[str]
-    sentiment: str
-    confidence: float
-
-
 class SummarizeRequest(BaseModel):
     content: str = Field(..., min_length=10, max_length=10000)
     max_length: int = Field(50, ge=20, le=200)
@@ -87,8 +74,8 @@ class SummarizeRequest(BaseModel):
 
 
 class SummarizeResponse(BaseModel):
+    title: str
     summary: str
-    confidence: float
 
 
 class ProcessRequest(BaseModel):
@@ -99,54 +86,8 @@ class ProcessRequest(BaseModel):
 
 
 class ProcessResponse(BaseModel):
-    categories: List[str]
+    title: str
     summary: str
-    sentiment: str
-    keywords: List[str]
-    confidence: float
-
-
-@router.post("/classify", response_model=ClassifyResponse)
-async def classify_content(
-    request: ClassifyRequest,
-    db: AsyncSession = Depends(get_db),
-):
-    """
-    Classify content using LLM
-
-    Returns categories, keywords, and sentiment analysis
-    """
-    try:
-        logger.info(f"Classifying content: length={len(request.content)}")
-
-        ai_processor = await get_ai_processor_from_prefs(db)
-        result = await ai_processor.process_content(
-            content=request.content,
-            input_type="text",
-            language=request.language,
-        )
-
-        return ClassifyResponse(
-            categories=result["categories"],
-            keywords=result["keywords"],
-            sentiment=result["sentiment"],
-            confidence=result["confidence"],
-        )
-
-    except HTTPException:
-        raise
-    except ExternalServiceException as e:
-        logger.error(f"Classification failed: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail=f"AI service error: {str(e)}"
-        )
-    except Exception as e:
-        logger.error(f"Unexpected error during classification: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Internal server error during classification"
-        )
 
 
 @router.post("/summarize", response_model=SummarizeResponse)
@@ -155,9 +96,9 @@ async def summarize_content(
     db: AsyncSession = Depends(get_db),
 ):
     """
-    Generate summary using LLM
+    Generate the concise summary/title and short abstract using LLM.
 
-    Returns a concise summary of the content
+    ``title`` is displayed as 总结 and ``summary`` as 摘要.
     """
     try:
         logger.info(f"Summarizing content: length={len(request.content)}")
@@ -170,8 +111,8 @@ async def summarize_content(
         )
 
         return SummarizeResponse(
+            title=result["title"],
             summary=result["summary"],
-            confidence=result["confidence"],
         )
 
     except HTTPException:
@@ -196,9 +137,9 @@ async def process_content(
     db: AsyncSession = Depends(get_db),
 ):
     """
-    Perform both classification and summarization in one call
+    Generate the normalized AI fields in one call.
 
-    Returns complete AI analysis including categories, summary, sentiment, and keywords
+    Returns only the concise summary/title and short abstract.
     """
     try:
         logger.info(
@@ -214,11 +155,8 @@ async def process_content(
         )
 
         return ProcessResponse(
-            categories=result["categories"],
+            title=result["title"],
             summary=result["summary"],
-            sentiment=result["sentiment"],
-            keywords=result["keywords"],
-            confidence=result["confidence"],
         )
 
     except HTTPException:

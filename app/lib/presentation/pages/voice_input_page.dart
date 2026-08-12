@@ -15,7 +15,7 @@ import '../../data/database.dart';
 /// Features:
 /// - Voice recorder widget with real-time feedback
 /// - Auto-save 3 seconds after recording stops
-/// - AI categorization and summarization
+/// - AI summary and abstract generation
 /// - Error handling and retry
 class VoiceInputPage extends StatefulWidget {
   const VoiceInputPage({Key? key}) : super(key: key);
@@ -97,8 +97,10 @@ class _VoiceInputPageState extends State<VoiceInputPage> {
 
                         // Voice Recorder Widget
                         VoiceRecorderWidget(
-                          onRecordingComplete: (audioFile) => _handleRecordingComplete(audioFile),
-                          onRecordingCancelled: () => _handleRecordingCancelled(),
+                          onRecordingComplete: (audioFile) =>
+                              _handleRecordingComplete(audioFile),
+                          onRecordingCancelled: () =>
+                              _handleRecordingCancelled(),
                         ),
 
                         const SizedBox(height: 24),
@@ -129,7 +131,8 @@ class _VoiceInputPageState extends State<VoiceInputPage> {
   }
 
   /// Build status banner (error or success message)
-  Widget _buildStatusBanner(BuildContext context, InspirationProvider provider) {
+  Widget _buildStatusBanner(
+      BuildContext context, InspirationProvider provider) {
     final error = provider.error;
     final isError = error != null;
 
@@ -195,7 +198,7 @@ class _VoiceInputPageState extends State<VoiceInputPage> {
             _buildInstructionItem('再次点击停止录音'),
             _buildInstructionItem('支持暂停和继续录音'),
             _buildInstructionItem('最长支持5分钟录音'),
-            _buildInstructionItem('系统会自动转写和分类'),
+            _buildInstructionItem('系统会自动转写并生成总结'),
           ],
         ),
       ),
@@ -228,7 +231,7 @@ class _VoiceInputPageState extends State<VoiceInputPage> {
         child: LoadingIndicator(
           style: LoadingStyle.wave,
           size: 50.0,
-          message: '正在处理音频...\n正在进行语音识别和智能分类',
+          message: '正在处理音频...\n正在进行语音识别并生成摘要',
         ),
       ),
     );
@@ -287,7 +290,8 @@ class _VoiceInputPageState extends State<VoiceInputPage> {
   }
 
   /// Build action buttons (save/retry/discard)
-  Widget _buildActionButtons(BuildContext context, InspirationProvider provider) {
+  Widget _buildActionButtons(
+      BuildContext context, InspirationProvider provider) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -409,7 +413,8 @@ class _VoiceInputPageState extends State<VoiceInputPage> {
           TextButton(
             onPressed: () {
               // Delete file
-              if (_recordedAudioFile != null && _recordedAudioFile!.existsSync()) {
+              if (_recordedAudioFile != null &&
+                  _recordedAudioFile!.existsSync()) {
                 _recordedAudioFile!.deleteSync();
               }
 
@@ -447,7 +452,8 @@ class _VoiceInputPageState extends State<VoiceInputPage> {
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text('语言设置', style: TextStyle(fontWeight: FontWeight.bold)),
+                const Text('语言设置',
+                    style: TextStyle(fontWeight: FontWeight.bold)),
                 const SizedBox(height: 8),
                 DropdownButton<String>(
                   value: tempLanguage,
@@ -468,7 +474,7 @@ class _VoiceInputPageState extends State<VoiceInputPage> {
                 const SizedBox(height: 16),
                 SwitchListTile(
                   title: const Text('自动AI处理'),
-                  subtitle: const Text('录音后自动进行分类和摘要'),
+                  subtitle: const Text('录音后自动生成总结和摘要'),
                   value: tempAutoProcess,
                   contentPadding: EdgeInsets.zero,
                   onChanged: (value) {

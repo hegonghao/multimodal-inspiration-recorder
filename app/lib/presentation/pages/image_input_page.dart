@@ -14,7 +14,7 @@ import '../widgets/common/loading_indicator.dart';
 /// - Camera capture and gallery selection
 /// - Image preview with metadata
 /// - OCR text extraction with 95%+ accuracy
-/// - AI categorization and summarization
+/// - AI summary and abstract generation
 /// - Manual text editing option
 class ImageInputPage extends StatefulWidget {
   const ImageInputPage({Key? key}) : super(key: key);
@@ -68,7 +68,8 @@ class _ImageInputPageState extends State<ImageInputPage> {
 
                         // Image Picker Widget
                         ImagePickerWidget(
-                          onImageSelected: (image) => _handleImageSelected(image),
+                          onImageSelected: (image) =>
+                              _handleImageSelected(image),
                           onImageCleared: () => _handleImageCleared(),
                         ),
 
@@ -100,7 +101,8 @@ class _ImageInputPageState extends State<ImageInputPage> {
   }
 
   /// Build status banner (error or success message)
-  Widget _buildStatusBanner(BuildContext context, InspirationProvider provider) {
+  Widget _buildStatusBanner(
+      BuildContext context, InspirationProvider provider) {
     final error = provider.error;
     final isError = error != null;
 
@@ -167,7 +169,7 @@ class _ImageInputPageState extends State<ImageInputPage> {
             _buildInstructionItem('支持中英文印刷体，准确率95%+'),
             _buildInstructionItem('PDF支持多页自动识别和结构化输出'),
             _buildInstructionItem('识别后可以手动编辑文字'),
-            _buildInstructionItem('系统会自动分类和生成摘要'),
+            _buildInstructionItem('系统会自动生成总结和摘要'),
           ],
         ),
       ),
@@ -200,7 +202,7 @@ class _ImageInputPageState extends State<ImageInputPage> {
         child: LoadingIndicator(
           style: LoadingStyle.ripple,
           size: 50.0,
-          message: '正在处理图片...\n正在进行文字识别和智能分类',
+          message: '正在处理图片...\n正在进行文字识别并生成摘要',
         ),
       ),
     );
@@ -250,7 +252,8 @@ class _ImageInputPageState extends State<ImageInputPage> {
   }
 
   /// Build action buttons (save/retry/discard)
-  Widget _buildActionButtons(BuildContext context, InspirationProvider provider) {
+  Widget _buildActionButtons(
+      BuildContext context, InspirationProvider provider) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -443,7 +446,7 @@ class _ImageInputPageState extends State<ImageInputPage> {
               const Text('• 支持中英文印刷体，准确率95%+'),
               const Text('• PDF支持多页识别和Markdown输出'),
               const Text('• 识别后可手动编辑文字'),
-              const Text('• 自动生成分类标签和摘要'),
+              const Text('• 自动生成总结和摘要'),
               const SizedBox(height: 16),
               const Text(
                 '最佳实践',

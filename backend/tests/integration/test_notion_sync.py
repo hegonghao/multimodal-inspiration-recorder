@@ -639,10 +639,9 @@ class TestNotionPropertyMapping:
         mock_record.title = "完整字段映射测试"
         mock_record.content = "测试所有字段是否正确映射到Notion属性"
         mock_record.input_type = "text"
-        mock_record.category_tags = json.dumps(["测试", "映射", "Notion"])
         mock_record.summary = "这是一个测试摘要"
+        mock_record.source = "灵感记录器"
         mock_record.created_at = datetime(2025, 1, 15, 10, 30, 0)
-        mock_record.updated_at = datetime(2025, 1, 15, 11, 0, 0)
 
         # Build properties
         notion_service = NotionSyncService()
@@ -654,19 +653,57 @@ class TestNotionPropertyMapping:
             assert NotionConfig.TITLE_PROPERTY in properties
             assert NotionConfig.CONTENT_PROPERTY in properties
             assert NotionConfig.INPUT_TYPE_PROPERTY in properties
-            assert NotionConfig.CATEGORIES_PROPERTY in properties
             assert NotionConfig.SUMMARY_PROPERTY in properties
             assert NotionConfig.CREATED_AT_PROPERTY in properties
-            assert NotionConfig.UPDATED_AT_PROPERTY in properties
             assert NotionConfig.SOURCE_PROPERTY in properties
+            assert len(properties) == 6
 
             # Verify property structures
             assert properties[NotionConfig.TITLE_PROPERTY]["title"][0]["text"]["content"] == "完整字段映射测试"
             assert "测试所有字段" in properties[NotionConfig.CONTENT_PROPERTY]["rich_text"][0]["text"]["content"]
             assert properties[NotionConfig.INPUT_TYPE_PROPERTY]["select"]["name"] == "文字"
-            assert len(properties[NotionConfig.CATEGORIES_PROPERTY]["multi_select"]) == 3
             assert "测试摘要" in properties[NotionConfig.SUMMARY_PROPERTY]["rich_text"][0]["text"]["content"]
+            assert properties[NotionConfig.SOURCE_PROPERTY]["select"]["name"] == "灵感记录器"
 
+        finally:
+            await notion_service.close()
+
+    async def test_database_schema_is_reconciled_to_six_columns(self):
+        notion_service = NotionSyncService()
+        NotionSyncService._schema_ready_databases.discard(
+            notion_service.database_id
+        )
+        notion_service.client.databases.retrieve = AsyncMock(
+            return_value={
+                "properties": {
+                    "名称1": {"type": "title"},
+                    "内容": {"type": "rich_text"},
+                    "输入方式": {"type": "select"},
+                    "摘要": {"type": "rich_text"},
+                    "创建日期": {"type": "date"},
+                    "来源": {"type": "select"},
+                    "分类": {"type": "multi_select"},
+                    "标签": {"type": "multi_select"},
+                    "通知时间": {"type": "date"},
+                }
+            }
+        )
+        notion_service.client.databases.update = AsyncMock(return_value={})
+
+        try:
+            with patch.object(NotionConfig, "RATE_LIMIT_DELAY", 0):
+                assert await notion_service.ensure_database_schema() is True
+
+            update_calls = notion_service.client.databases.update.await_args_list
+            assert update_calls[0].kwargs["properties"] == {
+                "分类": None,
+                "标签": None,
+                "通知时间": None,
+            }
+            assert update_calls[1].kwargs["properties"] == {
+                "名称1": {"name": "总结"}
+            }
+            assert len(update_calls) == 2
         finally:
             await notion_service.close()
 

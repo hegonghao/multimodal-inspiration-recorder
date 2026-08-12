@@ -258,24 +258,8 @@ class _SettingsPageState extends State<SettingsPage> {
             ),
             const SizedBox(height: 16),
             SwitchListTile(
-              title: const Text('自动分类'),
-              subtitle: const Text('使用 AI 自动为灵感添加分类标签'),
-              value: _preferences!.autoClassify,
-              onChanged: (value) async {
-                await _database.updatePreferences(
-                  UserPreferencesCompanion(
-                    id: const Value(1),
-                    autoClassify: Value(value),
-                    updatedAt: Value(DateTime.now()),
-                  ),
-                );
-                await _loadPreferences();
-              },
-            ),
-            const Divider(),
-            SwitchListTile(
-              title: const Text('自动摘要'),
-              subtitle: const Text('使用 AI 自动生成灵感摘要'),
+              title: const Text('自动整理'),
+              subtitle: const Text('使用 AI 自动生成总结和摘要'),
               value: _preferences!.autoSummarize,
               onChanged: (value) async {
                 await _database.updatePreferences(

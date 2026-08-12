@@ -94,7 +94,7 @@ class _HomePageState extends State<HomePage> {
                         _buildInputModeCard(
                           context: context,
                           title: '图片识别',
-                          subtitle: 'OCR文字提取，智能分类',
+                          subtitle: 'OCR文字提取，自动摘要',
                           icon: Icons.image_rounded,
                           color: AppColors.imageActive,
                           backgroundColor: AppColors.imageBackground,
@@ -144,7 +144,7 @@ class _HomePageState extends State<HomePage> {
         ),
         const SizedBox(height: UIConstants.paddingSmall),
         Text(
-          '快速记录，智能分类，自动同步',
+          '快速记录，自动摘要，自动同步',
           style: Theme.of(context).textTheme.bodyLarge?.copyWith(
                 color: Theme.of(context).colorScheme.onSurface.withOpacity(0.6),
               ),
@@ -202,13 +202,15 @@ class _HomePageState extends State<HomePage> {
                       children: [
                         Text(
                           title,
-                          style:
-                              Theme.of(context).textTheme.titleLarge?.copyWith(
-                                    fontWeight: FontWeight.bold,
-                                    color: isEnabled
-                                        ? Theme.of(context).colorScheme.onSurface
-                                        : Colors.grey[600],
-                                  ),
+                          style: Theme.of(context)
+                              .textTheme
+                              .titleLarge
+                              ?.copyWith(
+                                fontWeight: FontWeight.bold,
+                                color: isEnabled
+                                    ? Theme.of(context).colorScheme.onSurface
+                                    : Colors.grey[600],
+                              ),
                         ),
                         if (!isEnabled) ...[
                           const SizedBox(width: 8),

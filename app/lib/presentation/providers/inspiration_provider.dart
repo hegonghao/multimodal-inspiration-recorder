@@ -1,6 +1,5 @@
 import 'dart:io';
 import 'dart:async';
-import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:logger/logger.dart';
 import 'package:drift/drift.dart';
@@ -451,7 +450,6 @@ class InspirationProvider with ChangeNotifier {
     required int recordId,
     String? title,
     String? content,
-    String? categoryTags,
     String? summary,
   }) async {
     try {
@@ -461,7 +459,6 @@ class InspirationProvider with ChangeNotifier {
       final updateData = <String, dynamic>{};
       if (title != null) updateData['title'] = title;
       if (content != null) updateData['content'] = content;
-      if (categoryTags != null) updateData['category_tags'] = categoryTags;
       if (summary != null) updateData['summary'] = summary;
 
       // Update via API
@@ -558,8 +555,7 @@ class InspirationProvider with ChangeNotifier {
                 title: Value(apiRecord['title'] as String),
                 content: Value(apiRecord['content'] as String),
                 inputType: Value(apiRecord['input_type'] as String),
-                categoryTags:
-                    Value(_serializeCategoryTags(apiRecord['category_tags'])),
+                source: Value(apiRecord['source'] as String? ?? '灵感记录器'),
                 summary: Value(apiRecord['summary'] as String?),
                 notionPageId: Value(apiRecord['notion_page_id'] as String?),
                 syncStatus: Value(apiRecord['sync_status'] as int? ?? 0),
@@ -689,14 +685,13 @@ class InspirationProvider with ChangeNotifier {
                   Value(response['content'] as String? ?? localRecord.content),
               inputType: Value(
                   response['input_type'] as String? ?? localRecord.inputType),
+              source:
+                  Value(response['source'] as String? ?? localRecord.source),
               syncStatus: Value(
                   response['sync_status'] as int? ?? localRecord.syncStatus),
               notionPageId: response['notion_page_id'] != null
                   ? Value(response['notion_page_id'] as String)
                   : Value(localRecord.notionPageId),
-              categoryTags: response['category_tags'] != null
-                  ? Value(_serializeCategoryTags(response['category_tags']))
-                  : Value(localRecord.categoryTags),
               summary: response['summary'] != null
                   ? Value(response['summary'] as String)
                   : Value(localRecord.summary),
@@ -728,16 +723,6 @@ class InspirationProvider with ChangeNotifier {
     }
   }
 
-  /// Convert category_tags to JSON string for database storage
-  String? _serializeCategoryTags(dynamic tags) {
-    if (tags == null) return null;
-    if (tags is String) return tags;
-    if (tags is List) {
-      return jsonEncode(tags);
-    }
-    return null;
-  }
-
   /// Save API response to local database
   Future<void> _saveRecordToDatabase(Map<String, dynamic> apiResponse) async {
     try {
@@ -746,8 +731,7 @@ class InspirationProvider with ChangeNotifier {
         content: apiResponse['content'] as String,
         inputType: apiResponse['input_type'] as String,
         id: Value(apiResponse['id'] as int),
-        categoryTags:
-            Value(_serializeCategoryTags(apiResponse['category_tags'])),
+        source: Value(apiResponse['source'] as String? ?? '灵感记录器'),
         summary: Value(apiResponse['summary'] as String?),
         notionPageId: Value(apiResponse['notion_page_id'] as String?),
         syncStatus: Value(apiResponse['sync_status'] as int? ?? 0),
